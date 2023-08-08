@@ -1,0 +1,19 @@
+[package]
+name = "forcerelay-ckb-sdk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.72"
+ckb-fixed-hash = "0.111.0-rc8"
+ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", version = "0.1.0" }
+ckb-jsonrpc-types = "0.111.0-rc8"
+ckb-sdk = { git = "https://github.com/nervosnetwork/ckb-sdk-rust.git", rev = "refs/pull/80/merge" }
+ckb-types = "0.111.0-rc8"
+rlp = "0.5.2"
+serde = { version = "1.0.183", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0.104"

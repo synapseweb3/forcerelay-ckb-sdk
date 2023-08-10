@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.72"
 ckb-fixed-hash = "0.111.0-rc8"
+ckb-hash = "0.111.0-rc8"
 ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", version = "0.1.0" }
 ckb-jsonrpc-types = "0.111.0-rc8"
 ckb-sdk = { git = "https://github.com/nervosnetwork/ckb-sdk-rust.git", rev = "refs/pull/80/merge" }

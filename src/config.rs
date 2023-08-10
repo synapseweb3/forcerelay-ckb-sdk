@@ -70,6 +70,20 @@ impl Config {
         Self::type_id_type_script(&self.packet_contract_type_id_args)
     }
 
+    pub fn packet_cell_lock_script_prefix(&self) -> packed::Script {
+        let packet_args = PacketArgs {
+            channel_id: self.channel_id,
+            port_id: self.user_lock_script().calc_script_hash().unpack().0,
+            sequence: 0,
+        };
+
+        packed::Script::new_builder()
+            .hash_type(ScriptHashType::Type.into())
+            .code_hash(self.packet_contract_type_script().calc_script_hash())
+            .args(packet_args.get_search_args(true).pack())
+            .build()
+    }
+
     /// Packet cell lock script for certain sequence number.
     pub fn packet_cell_lock_script(&self, sequence: u16) -> packed::Script {
         let packet_args = PacketArgs {

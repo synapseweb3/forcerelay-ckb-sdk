@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{bail, ensure, Context as _, Result};
 use ckb_fixed_hash::H256;
 use ckb_hash::blake2b_256;
 use ckb_ics_axon::{
@@ -30,11 +30,9 @@ impl PacketCell {
         client: &CkbRpcClient,
         indexer: &IndexerRpcClient,
         config: &Config,
-        from_block: u64,
-        from_sequence: u16,
         limit: u32,
     ) -> Result<Vec<Self>> {
-        search_packet_cells(client, indexer, config, from_block, from_sequence, limit)
+        search_packet_cells(client, indexer, config, limit)
     }
 
     /// Parse packet, channel and envelope. This is a pure function.
@@ -81,21 +79,21 @@ fn search_packet_cells(
     client: &CkbRpcClient,
     indexer: &IndexerRpcClient,
     config: &Config,
-    from_block: u64,
-    from_sequence: u16,
     limit: u32,
 ) -> Result<Vec<PacketCell>> {
+    ensure!(limit > 0);
+
     let tip = indexer
         .get_indexer_tip()?
         .map_or(0, |t| t.block_number.into());
+    let last_block_to_search = tip.saturating_sub(config.confirmations.into());
     let cells = indexer.get_cells(
         ckb_indexer::SearchKey {
             filter: Some(ckb_indexer::SearchKeyFilter {
                 block_range: Some([
-                    from_block.into(),
-                    tip.saturating_add(1)
-                        .saturating_sub(config.confirmations.into())
-                        .into(),
+                    0.into(),
+                    // +1 because this is exclusive.
+                    last_block_to_search.saturating_add(1).into(),
                 ]),
                 ..Default::default()
             }),
@@ -113,16 +111,14 @@ fn search_packet_cells(
     let mut result = Vec::new();
     for c in cells.objects {
         let args = &c.output.lock.args;
-        let packet = or_continue!(PacketArgs::from_slice(args.as_bytes()));
-        if packet.sequence >= from_sequence {
-            let tx = get_transaction(client, c.out_point.tx_hash)?;
-            let p = or_continue!(parse_packet_tx(
-                tx,
-                c.out_point.index.value() as usize,
-                config
-            ));
-            result.push(p);
-        }
+        or_continue!(PacketArgs::from_slice(args.as_bytes()));
+        let tx = get_transaction(client, c.out_point.tx_hash)?;
+        let p = or_continue!(parse_packet_tx(
+            tx,
+            c.out_point.index.value() as usize,
+            config
+        ));
+        result.push(p);
     }
     Ok(result)
 }

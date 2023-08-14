@@ -1,6 +1,6 @@
 use anyhow::{ensure, Result};
 use ckb_hash::blake2b_256;
-use ckb_ics_axon::{handler::IbcPacket, message::Envelope, object::Packet};
+use ckb_ics_axon::{handler::IbcPacket, message::Envelope};
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
     packed,
@@ -89,12 +89,12 @@ pub fn assemble_write_ack_partial_transaction(
     config: &Config,
     channel: IbcChannelCell,
     packet: PacketCell,
-    ack: Packet,
+    ack: IbcPacket,
 ) -> Result<TransactionBuilder> {
     ensure!(packet.is_recv_packet());
     // XXX: is this correct?
-    ensure!(packet.packet.sequence == ack.sequence);
-    ensure!(ack.sequence == channel.channel.sequence.next_sequence_acks);
+    ensure!(packet.packet.sequence == ack.packet.sequence);
+    ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
 
     let mut new_channel_state = channel.channel.clone();
     // XXX: is this correct?
@@ -111,7 +111,7 @@ pub fn assemble_write_ack_partial_transaction(
     let packet_bytes = rlp::encode(&ack).freeze();
     let packet_cell = packed::CellOutput::new_builder()
         // XXX: is this correct?
-        .lock(config.packet_cell_lock_script(ack.sequence))
+        .lock(config.packet_cell_lock_script(ack.packet.sequence))
         // XXX: is this correct?
         .build_exact_capacity(Capacity::bytes(32)?)?;
     let packet_witness = packed::WitnessArgs::new_builder()

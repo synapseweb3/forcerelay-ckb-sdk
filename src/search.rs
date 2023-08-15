@@ -2,9 +2,8 @@ use anyhow::{bail, ensure, Context as _, Result};
 use ckb_fixed_hash::H256;
 use ckb_hash::blake2b_256;
 use ckb_ics_axon::{
-    handler::IbcChannel,
+    handler::{IbcChannel, IbcPacket},
     message::{Envelope, MsgType},
-    object::Packet,
     PacketArgs,
 };
 use ckb_jsonrpc_types::{Either, OutPoint, Script, TransactionView};
@@ -20,7 +19,7 @@ pub struct PacketCell {
     pub tx: TransactionView,
     pub packet_cell_idx: usize,
     pub channel: IbcChannelCell,
-    pub packet: Packet,
+    pub packet: IbcPacket,
     pub envelope: Envelope,
 }
 
@@ -140,7 +139,7 @@ fn parse_packet_tx(
 
     let packet_bytes = get_witness_output_type_and_verify_hash(&tx, packet_cell_idx)
         .context("get packet witness")?;
-    let packet: Packet = rlp::decode(packet_bytes).context("parse packet")?;
+    let packet: IbcPacket = rlp::decode(packet_bytes).context("parse packet")?;
 
     // XXX: assuming envelope is the last.
     let envelope_witness = tx.inner.witnesses.last().context("get envelope witness")?;

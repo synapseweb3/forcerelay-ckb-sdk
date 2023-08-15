@@ -93,7 +93,7 @@ pub fn assemble_write_ack_partial_transaction(
 ) -> Result<TransactionBuilder> {
     ensure!(packet.is_recv_packet());
     // XXX: is this correct?
-    ensure!(packet.packet.sequence == ack.packet.sequence);
+    ensure!(packet.packet.packet.sequence == ack.packet.sequence);
     ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
 
     let mut new_channel_state = channel.channel.clone();

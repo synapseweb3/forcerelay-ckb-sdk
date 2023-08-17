@@ -1,37 +1,56 @@
+use std::time::Duration;
+
 use anyhow::{bail, ensure, Context as _, Result};
-use ckb_fixed_hash::H256;
 use ckb_hash::blake2b_256;
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket},
     message::{Envelope, MsgType},
     PacketArgs,
 };
-use ckb_jsonrpc_types::{Either, OutPoint, Script, TransactionView};
-use ckb_sdk::{rpc::ckb_indexer, CkbRpcClient, IndexerRpcClient};
+use ckb_jsonrpc_types::{CellOutput, JsonBytes, OutPoint, Script, TransactionView};
+use ckb_sdk::rpc::ckb_indexer;
 use ckb_types::{
     packed,
     prelude::{Builder, Entity, Reader},
 };
+use futures::Stream;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, TryFromIntoRef};
 
-use crate::config::Config;
+use crate::{ckb_rpc_client::CkbRpcClient, config::Config, json::*};
 
+#[serde_as]
+#[derive(Serialize, Deserialize)]
 pub struct PacketCell {
     pub tx: TransactionView,
     pub packet_cell_idx: usize,
     pub channel: IbcChannelCell,
+    #[serde_as(as = "TryFromIntoRef<JsonIbcPacket>")]
     pub packet: IbcPacket,
+    #[serde_as(as = "TryFromIntoRef<JsonEnvelope>")]
     pub envelope: Envelope,
 }
 
 impl PacketCell {
     /// Search for and parse live packet cells.
-    pub fn search(
-        client: &CkbRpcClient,
-        indexer: &IndexerRpcClient,
-        config: &Config,
-        limit: u32,
-    ) -> Result<Vec<Self>> {
-        search_packet_cells(client, indexer, config, limit)
+    pub async fn search(client: &CkbRpcClient, config: &Config, limit: u32) -> Result<Vec<Self>> {
+        search_packet_cells(client, config, limit, &mut None).await
+    }
+
+    pub fn subscribe(
+        client: CkbRpcClient,
+        config: Config,
+    ) -> impl Stream<Item = Result<Vec<Self>>> {
+        async_stream::try_stream! {
+            let mut cursor = None;
+            loop {
+                let cells = search_packet_cells(&client, &config, 64, &mut cursor).await?;
+                if !cells.is_empty() {
+                    yield cells;
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
     }
 
     /// Parse packet, channel and envelope. This is a pure function.
@@ -74,44 +93,50 @@ macro_rules! or_continue {
     };
 }
 
-fn search_packet_cells(
+async fn search_packet_cells(
     client: &CkbRpcClient,
-    indexer: &IndexerRpcClient,
     config: &Config,
     limit: u32,
+    cursor: &mut Option<JsonBytes>,
 ) -> Result<Vec<PacketCell>> {
     ensure!(limit > 0);
-
-    let tip = indexer
-        .get_indexer_tip()?
+    let tip = client
+        .get_indexer_tip()
+        .await?
         .map_or(0, |t| t.block_number.into());
     let last_block_to_search = tip.saturating_sub(config.confirmations.into());
-    let cells = indexer.get_cells(
-        ckb_indexer::SearchKey {
-            filter: Some(ckb_indexer::SearchKeyFilter {
-                block_range: Some([
-                    0.into(),
-                    // +1 because this is exclusive.
-                    last_block_to_search.saturating_add(1).into(),
-                ]),
-                ..Default::default()
-            }),
-            group_by_transaction: Some(true),
-            script: config.packet_cell_lock_script_prefix().into(),
-            script_type: ckb_indexer::ScriptType::Lock,
-            script_search_mode: Some(ckb_indexer::ScriptSearchMode::Prefix),
-            with_data: Some(false),
-        },
-        ckb_indexer::Order::Asc,
-        limit.into(),
-        None,
-    )?;
+    let cells = client
+        .get_cells(
+            ckb_indexer::SearchKey {
+                filter: Some(ckb_indexer::SearchKeyFilter {
+                    block_range: Some([
+                        0.into(),
+                        // +1 because this is exclusive.
+                        last_block_to_search.saturating_add(1).into(),
+                    ]),
+                    ..Default::default()
+                }),
+                group_by_transaction: Some(true),
+                script: config.packet_cell_lock_script_prefix().into(),
+                script_type: ckb_indexer::ScriptType::Lock,
+                script_search_mode: Some(ckb_indexer::ScriptSearchMode::Prefix),
+                with_data: Some(false),
+            },
+            ckb_indexer::Order::Asc,
+            limit.into(),
+            cursor.clone(),
+        )
+        .await?;
 
     let mut result = Vec::new();
     for c in cells.objects {
         let args = &c.output.lock.args;
         or_continue!(PacketArgs::from_slice(args.as_bytes()));
-        let tx = get_transaction(client, c.out_point.tx_hash)?;
+        let tx = client
+            .get_transaction(c.out_point.tx_hash)
+            .await?
+            .transaction
+            .context("get transaction")?;
         let p = or_continue!(parse_packet_tx(
             tx,
             c.out_point.index.value() as usize,
@@ -119,6 +144,7 @@ fn search_packet_cells(
         ));
         result.push(p);
     }
+    *cursor = Some(cells.last_cursor);
     Ok(result)
 }
 
@@ -179,81 +205,74 @@ fn get_witness_output_type_and_verify_hash(tx: &TransactionView, idx: usize) -> 
     Ok(output_type)
 }
 
-pub fn get_transaction(client: &CkbRpcClient, tx_hash: H256) -> Result<TransactionView> {
-    let tx = client
-        .get_transaction(tx_hash)?
-        .context("transaction not found")?
-        .transaction
-        .context("transaction not found")?;
-    match tx.inner {
-        Either::Left(tx) => Ok(tx),
-        Either::Right(_) => bail!("unexpected bytes response for get_transaction"),
-    }
-}
-
-pub fn get_latest_cell_by_type_script(
-    indexer: &IndexerRpcClient,
+pub async fn get_latest_cell_by_type_script(
+    client: &CkbRpcClient,
     type_script: Script,
 ) -> Result<ckb_indexer::Cell> {
-    let mut cells = indexer.get_cells(
-        ckb_indexer::SearchKey {
-            filter: None,
-            group_by_transaction: Some(true),
-            script: type_script,
-            script_search_mode: Some(ckb_indexer::ScriptSearchMode::Exact),
-            script_type: ckb_indexer::ScriptType::Type,
-            with_data: Some(false),
-        },
-        ckb_indexer::Order::Desc,
-        1.into(),
-        None,
-    )?;
+    let mut cells = client
+        .get_cells(
+            ckb_indexer::SearchKey {
+                filter: None,
+                group_by_transaction: Some(true),
+                script: type_script,
+                script_search_mode: Some(ckb_indexer::ScriptSearchMode::Exact),
+                script_type: ckb_indexer::ScriptType::Type,
+                with_data: Some(false),
+            },
+            ckb_indexer::Order::Desc,
+            1.into(),
+            None,
+        )
+        .await?;
     if cells.objects.is_empty() {
         bail!("cell not found");
     }
     Ok(cells.objects.remove(0))
 }
 
-pub fn get_latest_cell_by_lock_script(
-    indexer: &IndexerRpcClient,
+pub async fn get_latest_cell_by_lock_script(
+    client: &CkbRpcClient,
     lock_script: Script,
 ) -> Result<ckb_indexer::Cell> {
-    let mut cells = indexer.get_cells(
-        ckb_indexer::SearchKey {
-            filter: None,
-            group_by_transaction: Some(true),
-            script: lock_script,
-            script_search_mode: Some(ckb_indexer::ScriptSearchMode::Exact),
-            script_type: ckb_indexer::ScriptType::Lock,
-            with_data: Some(false),
-        },
-        ckb_indexer::Order::Desc,
-        1.into(),
-        None,
-    )?;
+    let mut cells = client
+        .get_cells(
+            ckb_indexer::SearchKey {
+                filter: None,
+                group_by_transaction: Some(true),
+                script: lock_script,
+                script_search_mode: Some(ckb_indexer::ScriptSearchMode::Exact),
+                script_type: ckb_indexer::ScriptType::Lock,
+                with_data: Some(false),
+            },
+            ckb_indexer::Order::Desc,
+            1.into(),
+            None,
+        )
+        .await?;
     if cells.objects.is_empty() {
         bail!("cell not found");
     }
     Ok(cells.objects.remove(0))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IbcChannelCell {
-    pub out_point: packed::OutPoint,
-    pub output: packed::CellOutput,
+    pub out_point: OutPoint,
+    pub output: CellOutput,
+    #[serde(with = "JsonIbcChannel")]
     pub channel: IbcChannel,
 }
 
 impl IbcChannelCell {
-    pub fn get_latest(
-        client: &CkbRpcClient,
-        indexer: &IndexerRpcClient,
-        config: &Config,
-    ) -> Result<Self> {
+    pub async fn get_latest(client: &CkbRpcClient, config: &Config) -> Result<Self> {
         let channel_cell =
-            get_latest_cell_by_lock_script(indexer, config.channel_cell_lock_script().into())
+            get_latest_cell_by_lock_script(client, config.channel_cell_lock_script().into())
+                .await
                 .context("get channel cell")?;
-        let tx = get_transaction(client, channel_cell.out_point.tx_hash.clone())
+        let tx = client
+            .get_transaction(channel_cell.out_point.tx_hash.clone())
+            .await?
+            .transaction
             .context("get transaction")?;
         let idx = channel_cell.out_point.index.value() as usize;
         Self::parse(&tx, idx)
@@ -267,15 +286,8 @@ impl IbcChannelCell {
         let out_point = OutPoint {
             tx_hash: tx.hash.clone(),
             index: (index as u32).into(),
-        }
-        .into();
-        let output = tx
-            .inner
-            .outputs
-            .get(index)
-            .context("get output")?
-            .clone()
-            .into();
+        };
+        let output = tx.inner.outputs.get(index).context("get output")?.clone();
         Ok(IbcChannelCell {
             out_point,
             output,
@@ -285,16 +297,17 @@ impl IbcChannelCell {
 
     pub fn as_input(&self) -> packed::CellInput {
         packed::CellInput::new_builder()
-            .previous_output(self.out_point.clone())
+            .previous_output(self.out_point.clone().into())
             .build()
     }
 }
 
-pub fn get_axon_metadata_cell_dep(
-    indexer: &IndexerRpcClient,
+pub async fn get_axon_metadata_cell_dep(
+    client: &CkbRpcClient,
     config: &Config,
 ) -> Result<packed::CellDep> {
-    let cell = get_latest_cell_by_type_script(indexer, config.axon_metadata_type_script().into())
+    let cell = get_latest_cell_by_type_script(client, config.axon_metadata_type_script().into())
+        .await
         .context("get axon metadata cell")?;
 
     Ok(packed::CellDep::new_builder()
@@ -302,24 +315,25 @@ pub fn get_axon_metadata_cell_dep(
         .build())
 }
 
-pub fn get_channel_contract_cell_dep(
-    indexer: &IndexerRpcClient,
+pub async fn get_channel_contract_cell_dep(
+    client: &CkbRpcClient,
     config: &Config,
 ) -> Result<packed::CellDep> {
-    let cell =
-        get_latest_cell_by_type_script(indexer, config.channel_contract_type_script().into())
-            .context("get channel contract cell")?;
+    let cell = get_latest_cell_by_type_script(client, config.channel_contract_type_script().into())
+        .await
+        .context("get channel contract cell")?;
 
     Ok(packed::CellDep::new_builder()
         .out_point(cell.out_point.into())
         .build())
 }
 
-pub fn get_packet_contract_cell_dep(
-    indexer: &IndexerRpcClient,
+pub async fn get_packet_contract_cell_dep(
+    client: &CkbRpcClient,
     config: &Config,
 ) -> Result<packed::CellDep> {
-    let cell = get_latest_cell_by_type_script(indexer, config.packet_contract_type_script().into())
+    let cell = get_latest_cell_by_type_script(client, config.packet_contract_type_script().into())
+        .await
         .context("get packet contract cell")?;
 
     Ok(packed::CellDep::new_builder()

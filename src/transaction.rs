@@ -63,7 +63,7 @@ pub fn assemble_send_packet_partial_transaction(
         // Channel.
         .input(channel.as_input())
         // Same output (capacity and lock) as previous channel cell.
-        .output(channel.output)
+        .output(channel.output.into())
         .output_data(blake2b_256(&new_channel_bytes)[..].pack())
         .witness(channel_witness.as_bytes().pack())
         // Packet.
@@ -126,7 +126,7 @@ pub fn assemble_write_ack_partial_transaction(
         // Channel.
         .input(channel.as_input())
         // Same output (capacity and lock) as previous channel cell.
-        .output(channel.output)
+        .output(channel.output.into())
         .output_data(blake2b_256(&new_channel_bytes)[..].pack())
         .witness(channel_witness.as_bytes().pack())
         // Packet.

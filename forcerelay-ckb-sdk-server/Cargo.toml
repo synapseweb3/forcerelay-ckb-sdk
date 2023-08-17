@@ -1,0 +1,19 @@
+[package]
+name = "forcerelay-ckb-sdk-server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.72"
+async-trait = "0.1.73"
+axum = "0.6.20"
+clap = { version = "4.3.21", features = ["derive"] }
+forcerelay-ckb-sdk = { path = ".." }
+futures = "0.3.28"
+hyper = "0.14.27"
+jsonrpc-utils = { version = "0.2.0", features = ["axum"] }
+serde = { version = "1.0.183", features = ["derive"] }
+serde_with = "3.2.0"
+tokio = { version = "1.31.0", features = ["macros"] }

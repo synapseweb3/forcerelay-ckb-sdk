@@ -190,6 +190,6 @@ impl<'de> DeserializeAs<'de, Vec<u8>> for HexBytes {
         D: serde::Deserializer<'de>,
     {
         let b = JsonBytes::deserialize(deserializer)?;
-        Ok(b.as_bytes().to_vec())
+        Ok(b.into_bytes().to_vec())
     }
 }

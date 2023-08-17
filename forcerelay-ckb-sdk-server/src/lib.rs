@@ -67,6 +67,7 @@ pub trait Rpc {
 
 #[serde_as]
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SendPacketParams {
     pub axon_metadata_cell_dep: CellDep,
     pub channel_contract_cell_dep: CellDep,
@@ -78,6 +79,7 @@ pub struct SendPacketParams {
 
 #[serde_as]
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WriteAckParams {
     pub axon_metadata_cell_dep: CellDep,
     pub channel_contract_cell_dep: CellDep,
@@ -90,6 +92,7 @@ pub struct WriteAckParams {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConsumeAckParams {
     pub packet_contract_cell_dep: CellDep,
     pub ack_packet_cell: PacketCell,

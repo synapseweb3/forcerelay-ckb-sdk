@@ -23,9 +23,8 @@ pub struct JsonIbcPacket {
 pub enum JsonPacketStatus {
     Send,
     Recv,
+    WriteAck,
     Ack,
-    InboxAck,
-    OutboxAck,
 }
 
 impl From<&IbcPacket> for JsonIbcPacket {
@@ -133,10 +132,8 @@ enum JsonMsgType {
     MsgChannelCloseConfirm,
     MsgSendPacket,
     MsgRecvPacket,
+    MsgWriteAckPacket,
     MsgAckPacket,
-    MsgAckOutboxPacket,
-    MsgAckInboxPacket,
-    MsgFinishPacket,
     MsgTimeoutPacket,
 }
 

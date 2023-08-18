@@ -1,6 +1,6 @@
 use anyhow::{ensure, Result};
 use ckb_hash::blake2b_256;
-use ckb_ics_axon::{handler::IbcPacket, message::Envelope};
+use ckb_ics_axon::{handler::IbcPacket, message::Envelope, object::Ordering};
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
     packed,
@@ -36,7 +36,6 @@ pub fn assemble_send_packet_partial_transaction(
     // Sequence will be overwritten.
     mut packet: IbcPacket,
 ) -> Result<TransactionBuilder> {
-    // XXX: is this correct?
     packet.packet.sequence = channel.channel.sequence.next_sequence_sends;
     let mut new_channel_state = channel.channel.clone();
     // XXX: overflow.
@@ -92,13 +91,14 @@ pub fn assemble_write_ack_partial_transaction(
     ack: IbcPacket,
 ) -> Result<TransactionBuilder> {
     ensure!(packet.is_recv_packet());
-    // XXX: is this correct?
-    ensure!(packet.packet.packet.sequence == ack.packet.sequence);
-    ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
 
     let mut new_channel_state = channel.channel.clone();
-    // XXX: is this correct?
-    new_channel_state.sequence.next_sequence_acks += 1;
+
+    ensure!(packet.packet.packet.sequence == ack.packet.sequence);
+    if channel.channel.order == Ordering::Ordered {
+        ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
+        new_channel_state.sequence.next_sequence_acks += 1;
+    }
 
     let prev_channel_bytes = rlp::encode(&channel.channel).freeze();
     let new_channel_bytes = rlp::encode(&new_channel_state).freeze();

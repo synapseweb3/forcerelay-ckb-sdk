@@ -87,8 +87,6 @@ pub struct WriteAckParams {
     pub config: Config,
     pub channel: IbcChannelCell,
     pub packet: PacketCell,
-    #[serde_as(as = "TryFromIntoRef<JsonIbcPacket>")]
-    pub ack: IbcPacket,
 }
 
 #[derive(Deserialize)]
@@ -195,7 +193,6 @@ impl Rpc for RpcImpl {
             &params.config,
             params.channel,
             params.packet,
-            params.ack,
         )
         .map(|t| t.build().data().into())
         .map_err(internal_error)

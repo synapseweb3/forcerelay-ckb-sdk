@@ -1,5 +1,10 @@
 use anyhow::{ensure, Context, Result};
-use ckb_ics_axon::{get_channel_id_str, handler::IbcPacket, message::Envelope, object::Ordering};
+use ckb_ics_axon::{
+    get_channel_id_str,
+    handler::{IbcPacket, PacketStatus},
+    message::Envelope,
+    object::Ordering,
+};
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
     packed,
@@ -95,9 +100,14 @@ pub fn assemble_write_ack_partial_transaction(
     config: &Config,
     channel: IbcChannelCell,
     packet: PacketCell,
-    ack: IbcPacket,
 ) -> Result<TransactionBuilder> {
     ensure!(packet.is_recv_packet());
+
+    let ack = IbcPacket {
+        packet: packet.packet.packet.clone(),
+        status: PacketStatus::WriteAck,
+        tx_hash: None,
+    };
 
     let mut new_channel_state = channel.channel.clone();
 

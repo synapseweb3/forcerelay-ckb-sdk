@@ -1,7 +1,7 @@
 mod types;
 
 use ckb_fixed_hash::H256;
-use ckb_ics_axon::{ChannelArgs, PacketArgs};
+use ckb_ics_axon::{convert_byte32_to_hex, ChannelArgs, PacketArgs};
 use ckb_sdk::constants::TYPE_ID_CODE_HASH;
 use ckb_types::{
     core::ScriptHashType,
@@ -46,6 +46,14 @@ impl Config {
 
     pub fn channel_contract_type_script(&self) -> packed::Script {
         Self::type_id_type_script(&self.channel_contract_type_id_args)
+    }
+
+    pub fn port_id(&self) -> [u8; 32] {
+        self.user_lock_script().calc_script_hash().unpack().0
+    }
+
+    pub fn port_id_string(&self) -> String {
+        convert_byte32_to_hex(&self.port_id())
     }
 
     pub fn channel_cell_lock_script(&self) -> packed::Script {

@@ -1,6 +1,5 @@
-use anyhow::{ensure, Result};
-use ckb_hash::blake2b_256;
-use ckb_ics_axon::{handler::IbcPacket, message::Envelope, object::Ordering};
+use anyhow::{ensure, Context, Result};
+use ckb_ics_axon::{get_channel_id_str, handler::IbcPacket, message::Envelope, object::Ordering};
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
     packed,
@@ -10,6 +9,7 @@ use ckb_types::{
 use crate::{
     config::Config,
     search::{IbcChannelCell, PacketCell},
+    utils::keccak256,
 };
 
 pub fn add_ibc_envelope(tx: TransactionBuilder, envelope: &Envelope) -> TransactionBuilder {
@@ -27,19 +27,26 @@ pub fn add_ibc_envelope(tx: TransactionBuilder, envelope: &Envelope) -> Transact
 /// You'd need to add [an IBC envelope](`add_ibc_envelope`) witness after other
 /// witnesses yourself.
 ///
+/// The sequence, source channel id and source port id of the packet will be set
+/// automatically according to the config or channel.
+///
 /// This is a pure function.
 pub fn assemble_send_packet_partial_transaction(
     axon_metadata_cell_dep: packed::CellDep,
     channel_contract_cell_dep: packed::CellDep,
     config: &Config,
     channel: IbcChannelCell,
-    // Sequence will be overwritten.
     mut packet: IbcPacket,
 ) -> Result<TransactionBuilder> {
     packet.packet.sequence = channel.channel.sequence.next_sequence_sends;
+    packet.packet.source_channel_id = get_channel_id_str(channel.channel.number);
+    packet.packet.source_port_id = channel.channel.port_id.clone();
     let mut new_channel_state = channel.channel.clone();
-    // XXX: overflow.
-    new_channel_state.sequence.next_sequence_sends += 1;
+    new_channel_state.sequence.next_sequence_sends = new_channel_state
+        .sequence
+        .next_sequence_sends
+        .checked_add(1)
+        .context("sequence overflow")?;
 
     let prev_channel_bytes = rlp::encode(&channel.channel).freeze();
     let new_channel_bytes = rlp::encode(&new_channel_state).freeze();
@@ -63,11 +70,11 @@ pub fn assemble_send_packet_partial_transaction(
         .input(channel.as_input())
         // Same output (capacity and lock) as previous channel cell.
         .output(channel.output.into())
-        .output_data(blake2b_256(&new_channel_bytes)[..].pack())
+        .output_data(keccak256(&new_channel_bytes)[..].pack())
         .witness(channel_witness.as_bytes().pack())
         // Packet.
         .output(packet_cell)
-        .output_data(blake2b_256(&packet_bytes)[..].pack())
+        .output_data(keccak256(&packet_bytes)[..].pack())
         .witness(packet_witness.as_bytes().pack());
 
     Ok(tx)
@@ -127,12 +134,12 @@ pub fn assemble_write_ack_partial_transaction(
         .input(channel.as_input())
         // Same output (capacity and lock) as previous channel cell.
         .output(channel.output.into())
-        .output_data(blake2b_256(&new_channel_bytes)[..].pack())
+        .output_data(keccak256(&new_channel_bytes)[..].pack())
         .witness(channel_witness.as_bytes().pack())
         // Packet.
         .input(packet.as_input())
         .output(packet_cell)
-        .output_data(blake2b_256(&packet_bytes)[..].pack())
+        .output_data(keccak256(&packet_bytes)[..].pack())
         .witness(packet_witness.as_bytes().pack());
 
     Ok(tx)

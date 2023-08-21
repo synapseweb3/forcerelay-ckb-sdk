@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use anyhow::{bail, ensure, Context as _, Result};
-use ckb_hash::blake2b_256;
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket},
     message::{Envelope, MsgType},
@@ -17,7 +16,7 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, TryFromIntoRef};
 
-use crate::{ckb_rpc_client::CkbRpcClient, config::Config, json::*};
+use crate::{ckb_rpc_client::CkbRpcClient, config::Config, json::*, utils::keccak256};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
@@ -197,7 +196,7 @@ fn get_witness_output_type_and_verify_hash(tx: &TransactionView, idx: usize) -> 
         .context("no output type")?
         .raw_data();
 
-    let witness_hash = blake2b_256(output_type);
+    let witness_hash = keccak256(output_type);
     let data = tx.inner.outputs_data.get(idx).context("get output data")?;
     if data.as_bytes() != witness_hash {
         bail!("witness output type hash doesn't match");

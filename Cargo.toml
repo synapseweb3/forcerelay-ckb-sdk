@@ -12,19 +12,21 @@ members = ["forcerelay-ckb-sdk-server"]
 anyhow = "1.0.72"
 async-stream = "0.3.5"
 bytes = "1.4.0"
-ckb-fixed-hash = "0.111.0-rc8"
-ckb-hash = "0.111.0-rc8"
-ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", rev = "refs/pull/8/merge" }
-ckb-jsonrpc-types = "0.111.0-rc8"
-ckb-sdk = { git = "https://github.com/nervosnetwork/ckb-sdk-rust.git", rev = "refs/pull/80/merge" }
-ckb-types = "0.111.0-rc8"
+ckb-fixed-hash = "0.108.0"
+ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", rev = "aa894e3766333" }
+ckb-jsonrpc-types = "0.108.0"
+ckb-sdk = "2.5.0"
+ckb-types = "0.108.0"
 faster-hex = "0.8.0"
 futures = "0.3.28"
 jsonrpc-utils = { version = "0.2.0", features = ["macros", "client"] }
 rlp = "0.5.2"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_with = "3.2.0"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 tokio = { version = "1.31.0", features = ["time"] }
 
 [dev-dependencies]
+axon-types = { git = "https://github.com/axonweb3/axon-contract", rev = "8c2338a" }
+ckb-testtool = "0.9.1"
 serde_json = "1.0.104"

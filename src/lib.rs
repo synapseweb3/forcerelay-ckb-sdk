@@ -7,3 +7,4 @@ pub mod config;
 pub mod json;
 pub mod search;
 pub mod transaction;
+pub mod utils;

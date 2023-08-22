@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{bail, ensure, Context as _, Result};
+use anyhow::{anyhow, bail, ensure, Context as _, Result};
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket},
     message::{Envelope, MsgType},
@@ -129,8 +129,6 @@ async fn search_packet_cells(
 
     let mut result = Vec::new();
     for c in cells.objects {
-        let args = &c.output.lock.args;
-        or_continue!(PacketArgs::from_slice(args.as_bytes()));
         let tx = client
             .get_transaction(c.out_point.tx_hash)
             .await?
@@ -152,6 +150,16 @@ fn parse_packet_tx(
     packet_cell_idx: usize,
     config: &Config,
 ) -> Result<PacketCell> {
+    let lock_args = tx
+        .inner
+        .outputs
+        .get(packet_cell_idx)
+        .context("get output")?
+        .lock
+        .args
+        .as_bytes();
+    PacketArgs::from_slice(lock_args).map_err(|_e| anyhow!("parse packet args"))?;
+
     let channel_lock = config.channel_cell_lock_script().into();
     let channel_cell_idx = tx
         .inner

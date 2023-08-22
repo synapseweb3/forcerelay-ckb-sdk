@@ -113,6 +113,9 @@ fn test_send_packet() -> Result<()> {
     };
     let tx = add_ibc_envelope(tx, &envelope).build();
 
+    // Test cell parsing.
+    PacketCell::parse(tx.clone().into(), 1, &config)?;
+
     context.set_capture_debug(true);
     let r = context.verify_tx(&tx, u64::MAX);
     for m in context.captured_messages() {
@@ -255,6 +258,9 @@ fn test_write_ack_packet() -> Result<()> {
         content: rlp::encode(&MsgWriteAckPacket { ack: vec![] }).to_vec(),
     };
     let tx = add_ibc_envelope(tx, &envelope).build();
+
+    // Test cell parsing.
+    PacketCell::parse(tx.clone().into(), 1, &config)?;
 
     context.set_capture_debug(true);
     let r = context.verify_tx(&tx, u64::MAX);

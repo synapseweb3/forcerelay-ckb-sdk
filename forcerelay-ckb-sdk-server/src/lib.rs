@@ -7,7 +7,7 @@ use forcerelay_ckb_sdk::{
     ckb_rpc_client::CkbRpcClient,
     ckb_types,
     config::Config,
-    json::{JsonEnvelope, JsonIbcPacket},
+    json::{HexBytes, JsonEnvelope, JsonIbcPacket},
     search::{
         get_axon_metadata_cell_dep, get_channel_contract_cell_dep, get_packet_contract_cell_dep,
         IbcChannelCell, PacketCell,
@@ -56,9 +56,11 @@ pub trait Rpc {
     fn assemble_send_packet_partial_transaction(
         &self,
         params: SendPacketParams,
-    ) -> Result<Transaction>;
-    fn assemble_write_ack_partial_transaction(&self, params: WriteAckParams)
-        -> Result<Transaction>;
+    ) -> Result<(Transaction, JsonEnvelope)>;
+    fn assemble_write_ack_partial_transaction(
+        &self,
+        params: WriteAckParams,
+    ) -> Result<(Transaction, JsonEnvelope)>;
     fn assemble_consume_ack_packet_partial_transaction(
         &self,
         params: ConsumeAckParams,
@@ -87,6 +89,8 @@ pub struct WriteAckParams {
     pub config: Config,
     pub channel: IbcChannelCell,
     pub packet: PacketCell,
+    #[serde_as(as = "HexBytes")]
+    pub ack_message: Vec<u8>,
 }
 
 #[derive(Deserialize)]
@@ -171,7 +175,7 @@ impl Rpc for RpcImpl {
     fn assemble_send_packet_partial_transaction(
         &self,
         params: SendPacketParams,
-    ) -> Result<Transaction> {
+    ) -> Result<(Transaction, JsonEnvelope)> {
         assemble_send_packet_partial_transaction(
             params.axon_metadata_cell_dep.into(),
             params.channel_contract_cell_dep.into(),
@@ -179,13 +183,13 @@ impl Rpc for RpcImpl {
             params.channel,
             params.packet,
         )
-        .map(|t| t.build().data().into())
+        .map(|(t, e)| (t.build().data().into(), (&e).into()))
         .map_err(internal_error)
     }
     fn assemble_write_ack_partial_transaction(
         &self,
         params: WriteAckParams,
-    ) -> Result<Transaction> {
+    ) -> Result<(Transaction, JsonEnvelope)> {
         assemble_write_ack_partial_transaction(
             params.axon_metadata_cell_dep.into(),
             params.channel_contract_cell_dep.into(),
@@ -193,8 +197,9 @@ impl Rpc for RpcImpl {
             &params.config,
             params.channel,
             params.packet,
+            params.ack_message,
         )
-        .map(|t| t.build().data().into())
+        .map(|(t, e)| (t.build().data().into(), (&e).into()))
         .map_err(internal_error)
     }
     fn assemble_consume_ack_packet_partial_transaction(

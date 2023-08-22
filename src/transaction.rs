@@ -2,7 +2,7 @@ use anyhow::{ensure, Context, Result};
 use ckb_ics_axon::{
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
-    message::Envelope,
+    message::{Envelope, MsgSendPacket, MsgType, MsgWriteAckPacket},
     object::Ordering,
 };
 use ckb_types::{
@@ -29,10 +29,9 @@ pub fn add_ibc_envelope(tx: TransactionBuilder, envelope: &Envelope) -> Transact
 /// input/output/witness, packet output/witness, axon metadata cell and channel
 /// contract cell deps.
 ///
-/// You'd need to add [an IBC envelope](`add_ibc_envelope`) witness after other
-/// witnesses yourself.
+/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
 ///
-/// The sequence, source channel id and source port id of the packet will be set
+/// The status, sequence, source channel id and source port id of the packet will be set
 /// automatically according to the config or channel.
 ///
 /// This is a pure function.
@@ -42,7 +41,8 @@ pub fn assemble_send_packet_partial_transaction(
     config: &Config,
     channel: IbcChannelCell,
     mut packet: IbcPacket,
-) -> Result<TransactionBuilder> {
+) -> Result<(TransactionBuilder, Envelope)> {
+    packet.status = PacketStatus::Send;
     packet.packet.sequence = channel.channel.sequence.next_sequence_sends;
     packet.packet.source_channel_id = get_channel_id_str(channel.channel.number);
     packet.packet.source_port_id = channel.channel.port_id.clone();
@@ -82,15 +82,21 @@ pub fn assemble_send_packet_partial_transaction(
         .output_data(keccak256(&packet_bytes)[..].pack())
         .witness(packet_witness.as_bytes().pack());
 
-    Ok(tx)
+    let envelope = Envelope {
+        msg_type: MsgType::MsgSendPacket,
+        content: rlp::encode(&MsgSendPacket {}).to_vec(),
+    };
+
+    Ok((tx, envelope))
 }
 
 /// Assemble WriteAck partial transaction. It'll have channel
 /// input/output/witness, packet input/output/witness and all the cell deps
 /// passed in.
 ///
-/// You'd need to add [an IBC envelope](`add_ibc_envelope`) witness after other
-/// witnesses yourself.
+/// The ack_message parameter would be put in the message envelope.
+///
+/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
 ///
 /// This is a pure function.
 pub fn assemble_write_ack_partial_transaction(
@@ -100,7 +106,8 @@ pub fn assemble_write_ack_partial_transaction(
     config: &Config,
     channel: IbcChannelCell,
     packet: PacketCell,
-) -> Result<TransactionBuilder> {
+    ack_message: Vec<u8>,
+) -> Result<(TransactionBuilder, Envelope)> {
     ensure!(packet.is_recv_packet());
 
     let ack = IbcPacket {
@@ -111,7 +118,6 @@ pub fn assemble_write_ack_partial_transaction(
 
     let mut new_channel_state = channel.channel.clone();
 
-    ensure!(packet.packet.packet.sequence == ack.packet.sequence);
     if channel.channel.order == Ordering::Ordered {
         ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
         new_channel_state.sequence.next_sequence_acks += 1;
@@ -152,7 +158,12 @@ pub fn assemble_write_ack_partial_transaction(
         .output_data(keccak256(&packet_bytes)[..].pack())
         .witness(packet_witness.as_bytes().pack());
 
-    Ok(tx)
+    let envelope = Envelope {
+        msg_type: MsgType::MsgWriteAckPacket,
+        content: rlp::encode(&MsgWriteAckPacket { ack: ack_message }).to_vec(),
+    };
+
+    Ok((tx, envelope))
 }
 
 /// Assemble consume AckPacket partial transaction. It'll have packet

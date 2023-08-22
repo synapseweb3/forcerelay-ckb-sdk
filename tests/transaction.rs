@@ -3,7 +3,7 @@ use axon_types::metadata::Metadata;
 use bytes::Bytes;
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket, PacketStatus},
-    message::{Envelope, MsgSendPacket, MsgType, MsgWriteAckPacket},
+    message::{Envelope, MsgType},
     object::{Packet, State},
 };
 use ckb_jsonrpc_types::TransactionView;
@@ -99,18 +99,13 @@ fn test_send_packet() -> Result<()> {
         status: PacketStatus::Send,
     };
 
-    let tx = assemble_send_packet_partial_transaction(
+    let (tx, envelope) = assemble_send_packet_partial_transaction(
         axon_metadata_cell_dep,
         channel_contract_cell_dep,
         &config,
         channel_cell,
         packet,
     )?;
-
-    let envelope = Envelope {
-        msg_type: MsgType::MsgSendPacket,
-        content: rlp::encode(&MsgSendPacket {}).to_vec(),
-    };
     let tx = add_ibc_envelope(tx, &envelope).build();
 
     // Test cell parsing.
@@ -244,19 +239,15 @@ fn test_write_ack_packet() -> Result<()> {
         packet,
     };
 
-    let tx = assemble_write_ack_partial_transaction(
+    let (tx, envelope) = assemble_write_ack_partial_transaction(
         axon_metadata_cell_dep,
         channel_contract_cell_dep,
         packet_contract_cell_dep,
         &config,
         channel_cell,
         packet_cell,
+        vec![],
     )?;
-
-    let envelope = Envelope {
-        msg_type: MsgType::MsgWriteAckPacket,
-        content: rlp::encode(&MsgWriteAckPacket { ack: vec![] }).to_vec(),
-    };
     let tx = add_ibc_envelope(tx, &envelope).build();
 
     // Test cell parsing.

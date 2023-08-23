@@ -5,7 +5,7 @@ use ckb_sdk::Address;
 use ckb_types::packed;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum AddressOrScript {
     Script(Script),
@@ -21,6 +21,7 @@ impl AddressOrScript {
     }
 }
 
+#[derive(Clone)]
 pub struct AddressString(pub Address);
 
 struct AddressStringVisitor;

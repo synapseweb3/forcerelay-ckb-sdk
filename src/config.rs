@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 pub use types::*;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     /// Its hash is used as port ID. Address (string) or script.
     pub user_lock_script: AddressOrScript,

@@ -1,5 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use ckb_ics_axon::{
+    consts::PACKET_CELL_CAPACITY,
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
     message::{Envelope, MsgSendPacket, MsgType, MsgWriteAckPacket},
@@ -63,7 +64,12 @@ pub fn assemble_send_packet_partial_transaction(
     let packet_bytes = rlp::encode(&packet).freeze();
     let packet_cell = packed::CellOutput::new_builder()
         .lock(config.packet_cell_lock_script(packet.packet.sequence))
-        .build_exact_capacity(Capacity::bytes(32)?)?;
+        .capacity(
+            Capacity::bytes(PACKET_CELL_CAPACITY as usize)
+                .unwrap()
+                .pack(),
+        )
+        .build();
     let packet_witness = packed::WitnessArgs::new_builder()
         .output_type(Some(packet_bytes.clone()).pack())
         .build();
@@ -133,10 +139,13 @@ pub fn assemble_write_ack_partial_transaction(
     let prev_packet_bytes = rlp::encode(&packet.packet).freeze();
     let packet_bytes = rlp::encode(&ack).freeze();
     let packet_cell = packed::CellOutput::new_builder()
-        // XXX: is this correct?
         .lock(config.packet_cell_lock_script(ack.packet.sequence))
-        // XXX: is this correct?
-        .build_exact_capacity(Capacity::bytes(32)?)?;
+        .capacity(
+            Capacity::bytes(PACKET_CELL_CAPACITY as usize)
+                .unwrap()
+                .pack(),
+        )
+        .build();
     let packet_witness = packed::WitnessArgs::new_builder()
         .input_type(Some(prev_packet_bytes).pack())
         .output_type(Some(packet_bytes.clone()).pack())

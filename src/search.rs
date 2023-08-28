@@ -83,15 +83,6 @@ impl PacketCell {
     }
 }
 
-macro_rules! or_continue {
-    ($e:expr) => {
-        match $e {
-            Ok(a) => a,
-            Err(_) => continue,
-        }
-    };
-}
-
 async fn search_packet_cells(
     client: &CkbRpcClient,
     config: &Config,
@@ -130,15 +121,17 @@ async fn search_packet_cells(
     let mut result = Vec::new();
     for c in cells.objects {
         let tx = client
-            .get_transaction(c.out_point.tx_hash)
+            .get_transaction(c.out_point.tx_hash.clone())
             .await?
             .transaction
             .context("get transaction")?;
-        let p = or_continue!(parse_packet_tx(
-            tx,
-            c.out_point.index.value() as usize,
-            config
-        ));
+        let p = match parse_packet_tx(tx, c.out_point.index.value() as usize, config) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("failed to parse packet tx {}: {e:#}", c.out_point.tx_hash);
+                continue;
+            }
+        };
         result.push(p);
     }
     *cursor = Some(cells.last_cursor);

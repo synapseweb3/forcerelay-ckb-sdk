@@ -118,6 +118,11 @@ async fn search_packet_cells(
         )
         .await?;
 
+    // No result. Don't update cursor.
+    if cells.last_cursor.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut result = Vec::new();
     for c in cells.objects {
         let tx = client

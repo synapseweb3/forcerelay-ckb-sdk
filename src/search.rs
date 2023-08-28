@@ -6,7 +6,7 @@ use ckb_ics_axon::{
     message::{Envelope, MsgType},
     PacketArgs,
 };
-use ckb_jsonrpc_types::{CellOutput, JsonBytes, OutPoint, Script, TransactionView};
+use ckb_jsonrpc_types::{CellOutput, OutPoint, Script, TransactionView};
 use ckb_sdk::rpc::ckb_indexer;
 use ckb_types::{
     packed,
@@ -32,8 +32,13 @@ pub struct PacketCell {
 
 impl PacketCell {
     /// Search for and parse live packet cells.
-    pub async fn search(client: &CkbRpcClient, config: &Config, limit: u32) -> Result<Vec<Self>> {
-        search_packet_cells(client, config, limit, &mut None).await
+    pub async fn search(
+        client: &CkbRpcClient,
+        config: &Config,
+        limit: u32,
+        first_block_to_search: &mut u64,
+    ) -> Result<Vec<Self>> {
+        search_packet_cells(client, config, limit, first_block_to_search).await
     }
 
     pub fn subscribe(
@@ -41,7 +46,7 @@ impl PacketCell {
         config: Config,
     ) -> impl Stream<Item = Result<Vec<Self>>> {
         async_stream::try_stream! {
-            let mut cursor = None;
+            let mut cursor = 0;
             loop {
                 let cells = search_packet_cells(&client, &config, 64, &mut cursor).await?;
                 if !cells.is_empty() {
@@ -87,7 +92,7 @@ async fn search_packet_cells(
     client: &CkbRpcClient,
     config: &Config,
     limit: u32,
-    cursor: &mut Option<JsonBytes>,
+    first_block_to_search: &mut u64,
 ) -> Result<Vec<PacketCell>> {
     ensure!(limit > 0);
     let tip = client
@@ -95,12 +100,15 @@ async fn search_packet_cells(
         .await?
         .map_or(0, |t| t.block_number.into());
     let last_block_to_search = tip.saturating_sub(config.confirmations.into());
+    if *first_block_to_search > last_block_to_search {
+        return Ok(vec![]);
+    }
     let cells = client
         .get_cells(
             ckb_indexer::SearchKey {
                 filter: Some(ckb_indexer::SearchKeyFilter {
                     block_range: Some([
-                        0.into(),
+                        (*first_block_to_search).into(),
                         // +1 because this is exclusive.
                         last_block_to_search.saturating_add(1).into(),
                     ]),
@@ -114,7 +122,7 @@ async fn search_packet_cells(
             },
             ckb_indexer::Order::Asc,
             limit.into(),
-            cursor.clone(),
+            None,
         )
         .await?;
 
@@ -134,7 +142,7 @@ async fn search_packet_cells(
         };
         result.push(p);
     }
-    *cursor = Some(cells.last_cursor);
+    *first_block_to_search = last_block_to_search.saturating_add(1);
     Ok(result)
 }
 

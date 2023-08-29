@@ -3,7 +3,7 @@ use ckb_ics_axon::{
     consts::PACKET_CELL_CAPACITY,
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
-    message::{Envelope, MsgSendPacket, MsgType, MsgWriteAckPacket},
+    message::{Envelope, MsgConsumeAckPacket, MsgSendPacket, MsgType, MsgWriteAckPacket},
     object::{Ordering, Packet},
 };
 use ckb_types::{
@@ -188,10 +188,14 @@ pub fn assemble_write_ack_partial_transaction(
 
 /// Assemble consume AckPacket partial transaction. It'll have packet
 /// input/witness and packet contract cell dep.
+///
+/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
+///
+/// This is a pure function.
 pub fn assemble_consume_ack_packet_partial_transaction(
     packet_contract_cell_dep: packed::CellDep,
     ack_packet_cell: PacketCell,
-) -> Result<TransactionBuilder> {
+) -> Result<(TransactionBuilder, Envelope)> {
     ensure!(ack_packet_cell.is_ack_packet());
 
     let packet = ack_packet_cell;
@@ -206,5 +210,10 @@ pub fn assemble_consume_ack_packet_partial_transaction(
         .input(packet.as_input())
         .witness(packet_witness.as_bytes().pack());
 
-    Ok(tx)
+    let envelope = Envelope {
+        msg_type: MsgType::MsgConsumeAckPacket,
+        content: rlp::encode(&MsgConsumeAckPacket {}).to_vec(),
+    };
+
+    Ok((tx, envelope))
 }

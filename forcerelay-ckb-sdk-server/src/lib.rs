@@ -63,7 +63,7 @@ pub trait Rpc {
     fn assemble_consume_ack_packet_partial_transaction(
         &self,
         params: ConsumeAckParams,
-    ) -> Result<Transaction>;
+    ) -> Result<(Transaction, JsonEnvelope)>;
 }
 
 #[serde_as]
@@ -210,12 +210,12 @@ impl Rpc for RpcImpl {
     fn assemble_consume_ack_packet_partial_transaction(
         &self,
         params: ConsumeAckParams,
-    ) -> Result<Transaction> {
+    ) -> Result<(Transaction, JsonEnvelope)> {
         assemble_consume_ack_packet_partial_transaction(
             params.packet_contract_cell_dep.into(),
             params.ack_packet_cell,
         )
-        .map(|t| t.build().data().into())
+        .map(|(t, e)| (t.build().data().into(), (&e).into()))
         .map_err(internal_error)
     }
 }

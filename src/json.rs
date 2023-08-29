@@ -135,6 +135,7 @@ enum JsonMsgType {
     MsgWriteAckPacket,
     MsgAckPacket,
     MsgTimeoutPacket,
+    MsgConsumeAckPacket,
 }
 
 #[serde_as]

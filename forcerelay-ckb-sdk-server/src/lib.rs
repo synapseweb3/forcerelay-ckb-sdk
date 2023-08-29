@@ -31,12 +31,7 @@ use serde_with::{serde_as, DefaultOnNull, DisplayFromStr};
 #[rpc]
 #[async_trait]
 pub trait Rpc {
-    async fn search_packet_cells(
-        &self,
-        config: Config,
-        limit: u32,
-        mut first_block_to_search: u64,
-    ) -> Result<(Vec<PacketCell>, u64)>;
+    async fn search_packet_cells(&self, config: Config, limit: u32) -> Result<Vec<PacketCell>>;
     async fn get_latest_channel_cell(&self, config: Config) -> Result<IbcChannelCell>;
 
     async fn get_axon_metadata_cell_dep(&self, config: Config) -> Result<CellDep>;
@@ -123,16 +118,10 @@ impl RpcImpl {
 
 #[async_trait]
 impl Rpc for RpcImpl {
-    async fn search_packet_cells(
-        &self,
-        config: Config,
-        limit: u32,
-        mut first_block_to_search: u64,
-    ) -> Result<(Vec<PacketCell>, u64)> {
-        let cells = PacketCell::search(&self.client, &config, limit, &mut first_block_to_search)
+    async fn search_packet_cells(&self, config: Config, limit: u32) -> Result<Vec<PacketCell>> {
+        PacketCell::search(&self.client, &config, limit)
             .await
-            .map_err(internal_error)?;
-        Ok((cells, first_block_to_search))
+            .map_err(internal_error)
     }
     async fn get_latest_channel_cell(&self, config: Config) -> Result<IbcChannelCell> {
         IbcChannelCell::get_latest(&self.client, &config)

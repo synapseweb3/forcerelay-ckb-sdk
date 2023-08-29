@@ -4,7 +4,7 @@ use ckb_ics_axon::{
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
     message::{Envelope, MsgSendPacket, MsgType, MsgWriteAckPacket},
-    object::Ordering,
+    object::{Ordering, Packet},
 };
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
@@ -30,10 +30,9 @@ pub fn add_ibc_envelope(tx: TransactionBuilder, envelope: &Envelope) -> Transact
 /// input/output/witness, packet output/witness, axon metadata cell and channel
 /// contract cell deps.
 ///
-/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
+/// Sequence of the packet will be the next send sequence of the channel.
 ///
-/// The status, sequence, source channel id and source port id of the packet will be set
-/// automatically according to the config or channel.
+/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
 ///
 /// This is a pure function.
 pub fn assemble_send_packet_partial_transaction(
@@ -41,12 +40,24 @@ pub fn assemble_send_packet_partial_transaction(
     channel_contract_cell_dep: packed::CellDep,
     config: &Config,
     channel: IbcChannelCell,
-    mut packet: IbcPacket,
+    data: Vec<u8>,
+    timeout_height: u64,
+    timeout_timestamp: u64,
 ) -> Result<(TransactionBuilder, Envelope)> {
-    packet.status = PacketStatus::Send;
-    packet.packet.sequence = channel.channel.sequence.next_sequence_sends;
-    packet.packet.source_channel_id = get_channel_id_str(channel.channel.number);
-    packet.packet.source_port_id = channel.channel.port_id.clone();
+    let packet = IbcPacket {
+        tx_hash: None,
+        status: PacketStatus::Send,
+        packet: Packet {
+            data,
+            timeout_height,
+            timeout_timestamp,
+            sequence: channel.channel.sequence.next_sequence_sends,
+            source_channel_id: get_channel_id_str(channel.channel.number),
+            source_port_id: channel.channel.port_id.clone(),
+            destination_port_id: channel.channel.counterparty.port_id.clone(),
+            destination_channel_id: channel.channel.counterparty.channel_id.clone(),
+        },
+    };
     let mut new_channel_state = channel.channel.clone();
     new_channel_state.sequence.next_sequence_sends = new_channel_state
         .sequence

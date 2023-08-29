@@ -1,13 +1,12 @@
 use async_trait::async_trait;
-use ckb_ics_axon::handler::IbcPacket;
 use ckb_jsonrpc_types::{CellDep, Transaction, TransactionView};
 use ckb_types::packed;
 use forcerelay_ckb_sdk::{
-    ckb_ics_axon, ckb_jsonrpc_types,
+    ckb_jsonrpc_types,
     ckb_rpc_client::CkbRpcClient,
     ckb_types,
     config::Config,
-    json::{HexBytes, JsonEnvelope, JsonIbcPacket},
+    json::{HexBytes, JsonEnvelope},
     search::{
         get_axon_metadata_cell_dep, get_channel_contract_cell_dep, get_packet_contract_cell_dep,
         IbcChannelCell, PacketCell,
@@ -27,7 +26,7 @@ use jsonrpc_utils::{
     rpc,
 };
 use serde::Deserialize;
-use serde_with::{serde_as, TryFromIntoRef};
+use serde_with::{serde_as, DefaultOnNull, DisplayFromStr};
 
 #[rpc]
 #[async_trait]
@@ -80,8 +79,12 @@ pub struct SendPacketParams {
     pub channel_contract_cell_dep: CellDep,
     pub config: Config,
     pub channel: IbcChannelCell,
-    #[serde_as(as = "TryFromIntoRef<JsonIbcPacket>")]
-    pub packet: IbcPacket,
+    #[serde_as(as = "HexBytes")]
+    pub data: Vec<u8>,
+    #[serde_as(as = "DefaultOnNull<DisplayFromStr>")]
+    pub timeout_height: u64,
+    #[serde_as(as = "DefaultOnNull<DisplayFromStr>")]
+    pub timeout_timestamp: u64,
 }
 
 #[serde_as]
@@ -192,7 +195,9 @@ impl Rpc for RpcImpl {
             params.channel_contract_cell_dep.into(),
             &params.config,
             params.channel,
-            params.packet,
+            params.data,
+            params.timeout_height,
+            params.timeout_timestamp,
         )
         .map(|(t, e)| (t.build().data().into(), (&e).into()))
         .map_err(internal_error)

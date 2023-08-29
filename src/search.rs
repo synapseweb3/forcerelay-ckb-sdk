@@ -6,7 +6,7 @@ use ckb_ics_axon::{
     message::{Envelope, MsgType},
     PacketArgs,
 };
-use ckb_jsonrpc_types::{CellOutput, JsonBytes, OutPoint, Script, TransactionView};
+use ckb_jsonrpc_types::{CellOutput, OutPoint, Script, TransactionView};
 use ckb_sdk::rpc::ckb_indexer;
 use ckb_types::{
     packed,
@@ -32,13 +32,23 @@ pub struct PacketCell {
 
 impl PacketCell {
     /// Search for and parse live packet cells.
-    pub async fn search(client: &CkbRpcClient, config: &Config, limit: u32) -> Result<Vec<Self>> {
-        search_packet_cells(client, config, limit, &mut None).await
+    ///
+    /// Will only return cells whose (block_number, tx_index) > cursor.
+    ///
+    /// If the result is Ok, cursor will be updated to point to the last cell
+    /// returned so that calling search again will not return any duplicated cells.
+    pub async fn search(
+        client: &CkbRpcClient,
+        config: &Config,
+        limit: u32,
+        cursor: &mut (u64, u32),
+    ) -> Result<Vec<Self>> {
+        search_packet_cells(client, config, limit, cursor).await
     }
 
     pub fn subscribe(client: CkbRpcClient, config: Config) -> impl Stream<Item = Result<Self>> {
         async_stream::try_stream! {
-            let mut cursor = None;
+            let mut cursor = (0, 0);
             loop {
                 let cells = search_packet_cells(&client, &config, 64, &mut cursor).await?;
                 for c in cells {
@@ -84,7 +94,7 @@ async fn search_packet_cells(
     client: &CkbRpcClient,
     config: &Config,
     limit: u32,
-    cursor: &mut Option<JsonBytes>,
+    cursor: &mut (u64, u32),
 ) -> Result<Vec<PacketCell>> {
     ensure!(limit > 0);
     let tip = client
@@ -97,7 +107,8 @@ async fn search_packet_cells(
             ckb_indexer::SearchKey {
                 filter: Some(ckb_indexer::SearchKeyFilter {
                     block_range: Some([
-                        0.into(),
+                        // No need to search for blocks < cursor.0.
+                        cursor.0.into(),
                         // +1 because this is exclusive.
                         last_block_to_search.saturating_add(1).into(),
                     ]),
@@ -111,17 +122,17 @@ async fn search_packet_cells(
             },
             ckb_indexer::Order::Asc,
             limit.into(),
-            cursor.clone(),
+            None,
         )
         .await?;
 
-    // No result. Don't update cursor.
-    if cells.last_cursor.is_empty() {
-        return Ok(Vec::new());
-    }
-
     let mut result = Vec::new();
-    for c in cells.objects {
+    let mut last = (0, 0);
+    for c in cells
+        .objects
+        .into_iter()
+        .skip_while(|c| (c.block_number.into(), c.tx_index.into()) <= *cursor)
+    {
         let tx = client
             .get_transaction(c.out_point.tx_hash.clone())
             .await?
@@ -135,8 +146,9 @@ async fn search_packet_cells(
             }
         };
         result.push(p);
+        last = (c.block_number.into(), c.tx_index.into());
     }
-    *cursor = Some(cells.last_cursor);
+    *cursor = last;
     Ok(result)
 }
 

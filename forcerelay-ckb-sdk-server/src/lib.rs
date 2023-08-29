@@ -119,7 +119,7 @@ impl RpcImpl {
 #[async_trait]
 impl Rpc for RpcImpl {
     async fn search_packet_cells(&self, config: Config, limit: u32) -> Result<Vec<PacketCell>> {
-        PacketCell::search(&self.client, &config, limit)
+        PacketCell::search(&self.client, &config, limit, &mut (0, 0))
             .await
             .map_err(internal_error)
     }

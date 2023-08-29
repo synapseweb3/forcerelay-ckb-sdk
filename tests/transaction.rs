@@ -43,13 +43,7 @@ fn test_send_packet() -> Result<()> {
 
     let axon_metadata_data = Metadata::new_builder().build().as_bytes();
     let axon_metadata_cell = context.deploy_cell(axon_metadata_data);
-    let axon_metadata_type_script = context
-        .get_cell(&axon_metadata_cell)
-        .unwrap()
-        .0
-        .type_()
-        .to_opt()
-        .unwrap();
+    let axon_metadata_type_script = get_type_script(&context, &axon_metadata_cell);
     let axon_metadata_cell_dep = packed::CellDep::new_builder()
         .out_point(axon_metadata_cell)
         .build();
@@ -57,18 +51,7 @@ fn test_send_packet() -> Result<()> {
     let channel_contract = context.deploy_cell(Bytes::from_static(include_bytes!(
         "../contracts/ics-channel"
     )));
-    let channel_contract_type_id_args: [u8; 32] = context
-        .get_cell(&channel_contract)
-        .unwrap()
-        .0
-        .type_()
-        .to_opt()
-        .unwrap()
-        .args()
-        .as_reader()
-        .raw_data()
-        .try_into()
-        .unwrap();
+    let channel_contract_type_id_args: [u8; 32] = get_type_id_args(&context, &channel_contract);
     let channel_contract_cell_dep = packed::CellDep::new_builder()
         .out_point(channel_contract)
         .build();
@@ -170,18 +153,7 @@ fn test_write_ack_packet() -> Result<()> {
     let channel_contract = context.deploy_cell(Bytes::from_static(include_bytes!(
         "../contracts/ics-channel"
     )));
-    let channel_contract_type_id_args: [u8; 32] = context
-        .get_cell(&channel_contract)
-        .unwrap()
-        .0
-        .type_()
-        .to_opt()
-        .unwrap()
-        .args()
-        .as_reader()
-        .raw_data()
-        .try_into()
-        .unwrap();
+    let channel_contract_type_id_args: [u8; 32] = get_type_id_args(&context, &channel_contract);
     let channel_contract_cell_dep = packed::CellDep::new_builder()
         .out_point(channel_contract)
         .build();
@@ -189,18 +161,7 @@ fn test_write_ack_packet() -> Result<()> {
     let packet_contract = context.deploy_cell(Bytes::from_static(include_bytes!(
         "../contracts/ics-packet"
     )));
-    let packet_contract_type_id_args: [u8; 32] = context
-        .get_cell(&packet_contract)
-        .unwrap()
-        .0
-        .type_()
-        .to_opt()
-        .unwrap()
-        .args()
-        .as_reader()
-        .raw_data()
-        .try_into()
-        .unwrap();
+    let packet_contract_type_id_args: [u8; 32] = get_type_id_args(&context, &packet_contract);
     let packet_contract_cell_dep = packed::CellDep::new_builder()
         .out_point(packet_contract)
         .build();
@@ -320,18 +281,7 @@ fn test_consume_ack_packet() -> Result<()> {
     let packet_contract = context.deploy_cell(Bytes::from_static(include_bytes!(
         "../contracts/ics-packet"
     )));
-    let packet_contract_type_id_args: [u8; 32] = context
-        .get_cell(&packet_contract)
-        .unwrap()
-        .0
-        .type_()
-        .to_opt()
-        .unwrap()
-        .args()
-        .as_reader()
-        .raw_data()
-        .try_into()
-        .unwrap();
+    let packet_contract_type_id_args: [u8; 32] = get_type_id_args(&context, &packet_contract);
     let packet_contract_cell_dep = packed::CellDep::new_builder()
         .out_point(packet_contract)
         .build();
@@ -404,4 +354,29 @@ fn test_consume_ack_packet() -> Result<()> {
     r?;
 
     Ok(())
+}
+
+/// # Panics
+///
+/// If the out point doesn't exist.
+fn get_type_script(context: &Context, out_point: &packed::OutPoint) -> packed::Script {
+    context
+        .get_cell(out_point)
+        .unwrap()
+        .0
+        .type_()
+        .to_opt()
+        .unwrap()
+}
+
+/// # Panics
+///
+/// If the out point doesn't exist or if the args are not 32 bytes.
+fn get_type_id_args(context: &Context, out_point: &packed::OutPoint) -> [u8; 32] {
+    get_type_script(context, out_point)
+        .args()
+        .as_reader()
+        .raw_data()
+        .try_into()
+        .unwrap()
 }

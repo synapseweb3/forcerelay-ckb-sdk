@@ -41,16 +41,13 @@ impl PacketCell {
         search_packet_cells(client, config, limit, first_block_to_search).await
     }
 
-    pub fn subscribe(
-        client: CkbRpcClient,
-        config: Config,
-    ) -> impl Stream<Item = Result<Vec<Self>>> {
+    pub fn subscribe(client: CkbRpcClient, config: Config) -> impl Stream<Item = Result<Self>> {
         async_stream::try_stream! {
             let mut cursor = 0;
             loop {
                 let cells = search_packet_cells(&client, &config, 64, &mut cursor).await?;
-                if !cells.is_empty() {
-                    yield cells;
+                for c in cells {
+                    yield c;
                 }
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }

@@ -43,7 +43,7 @@ pub trait Rpc {
     async fn get_channel_contract_cell_dep(&self, config: Config) -> Result<CellDep>;
     async fn get_packet_contract_cell_dep(&self, config: Config) -> Result<CellDep>;
 
-    type PS: Stream<Item = PublishMsg<Vec<PacketCell>>> + Send + 'static;
+    type PS: Stream<Item = PublishMsg<PacketCell>> + Send + 'static;
     #[rpc(pub_sub(notify = "packet_cells", unsubscribe = "unsubscribe_packet_cells"))]
     fn subscribe_packet_cells(&self, config: Config) -> Result<Self::PS>;
 
@@ -158,7 +158,7 @@ impl Rpc for RpcImpl {
             .map_err(internal_error)
     }
 
-    type PS = BoxStream<'static, PublishMsg<Vec<PacketCell>>>;
+    type PS = BoxStream<'static, PublishMsg<PacketCell>>;
     fn subscribe_packet_cells(&self, config: Config) -> Result<Self::PS> {
         Ok(PacketCell::subscribe(self.client.clone(), config)
             .map(|r| match r {

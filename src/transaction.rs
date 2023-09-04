@@ -4,7 +4,7 @@ use ckb_ics_axon::{
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
     message::{Envelope, MsgConsumeAckPacket, MsgSendPacket, MsgType, MsgWriteAckPacket},
-    object::{Ordering, Packet},
+    object::Packet,
 };
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
@@ -133,12 +133,7 @@ pub fn assemble_write_ack_partial_transaction(
         tx_hash: None,
     };
 
-    let mut new_channel_state = channel.channel.clone();
-
-    if channel.channel.order == Ordering::Ordered {
-        ensure!(ack.packet.sequence == channel.channel.sequence.next_sequence_acks);
-        new_channel_state.sequence.next_sequence_acks += 1;
-    }
+    let new_channel_state = channel.channel.clone();
 
     let prev_channel_bytes = rlp::encode(&channel.channel).freeze();
     let new_channel_bytes = rlp::encode(&new_channel_state).freeze();

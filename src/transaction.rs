@@ -57,6 +57,7 @@ pub fn assemble_send_packet_partial_transaction(
             destination_port_id: channel.channel.counterparty.port_id.clone(),
             destination_channel_id: channel.channel.counterparty.channel_id.clone(),
         },
+        ack: None,
     };
     let mut new_channel_state = channel.channel.clone();
     new_channel_state.sequence.next_sequence_sends = new_channel_state
@@ -123,7 +124,7 @@ pub fn assemble_write_ack_partial_transaction(
     config: &Config,
     channel: IbcChannelCell,
     packet: PacketCell,
-    ack_message: Vec<u8>,
+    ack: Vec<u8>,
 ) -> Result<(TransactionBuilder, Envelope)> {
     ensure!(packet.is_recv_packet());
 
@@ -131,6 +132,7 @@ pub fn assemble_write_ack_partial_transaction(
         packet: packet.packet.packet.clone(),
         status: PacketStatus::WriteAck,
         tx_hash: None,
+        ack: Some(ack),
     };
 
     let new_channel_state = channel.channel.clone();
@@ -175,7 +177,7 @@ pub fn assemble_write_ack_partial_transaction(
 
     let envelope = Envelope {
         msg_type: MsgType::MsgWriteAckPacket,
-        content: rlp::encode(&MsgWriteAckPacket { ack: ack_message }).to_vec(),
+        content: rlp::encode(&MsgWriteAckPacket {}).to_vec(),
     };
 
     Ok((tx, envelope))

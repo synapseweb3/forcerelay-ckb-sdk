@@ -204,6 +204,7 @@ fn test_write_ack_packet() -> Result<()> {
         },
         tx_hash: None,
         status: PacketStatus::Recv,
+        ack: None,
     };
 
     let packet_cell_out_point = context.create_cell(
@@ -236,7 +237,7 @@ fn test_write_ack_packet() -> Result<()> {
         &config,
         channel_cell,
         packet_cell,
-        vec![],
+        vec![1],
     )?;
     let tx = tx
         .input(
@@ -305,6 +306,7 @@ fn test_consume_ack_packet() -> Result<()> {
         },
         tx_hash: None,
         status: PacketStatus::Ack,
+        ack: Some(vec![1]),
     };
 
     let packet_cell_out_point = context.create_cell(

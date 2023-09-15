@@ -479,7 +479,7 @@ fn sudt_amount_data(amount: u128) -> Bytes {
 }
 
 fn encode_addr(lock: packed::Script) -> Vec<u8> {
-    [&[0; 12][..], &lock.calc_script_hash().as_slice()[..20]].concat()
+    lock.calc_script_hash().as_slice()[..20].to_vec()
 }
 
 /// # Panics

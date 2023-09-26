@@ -31,9 +31,6 @@ fn test_send_packet() -> Result<()> {
     let always_success_lock = context
         .build_script(&always_success_contract, Bytes::new())
         .unwrap();
-    let always_success_contract_dep = packed::CellDep::new_builder()
-        .out_point(always_success_contract)
-        .build();
     let always_success_cell = context.create_cell(
         packed::CellOutput::new_builder()
             .lock(always_success_lock.clone())
@@ -97,14 +94,13 @@ fn test_send_packet() -> Result<()> {
         0,
         0,
     )?;
-    let tx = tx
-        .input(
-            packed::CellInput::new_builder()
-                .previous_output(always_success_cell)
-                .build(),
-        )
-        .cell_dep(always_success_contract_dep);
+    let tx = tx.input(
+        packed::CellInput::new_builder()
+            .previous_output(always_success_cell)
+            .build(),
+    );
     let tx = add_ibc_envelope(tx, &envelope).build();
+    let tx = context.complete_tx(tx);
 
     // Test cell parsing.
     PacketCell::parse(tx.clone().into(), 1, &config)?;
@@ -127,9 +123,6 @@ fn test_write_ack_packet() -> Result<()> {
     let always_success_lock = context
         .build_script(&always_success_contract, Bytes::new())
         .unwrap();
-    let always_success_contract_dep = packed::CellDep::new_builder()
-        .out_point(always_success_contract)
-        .build();
     let always_success_cell = context.create_cell(
         packed::CellOutput::new_builder()
             .lock(always_success_lock.clone())
@@ -204,6 +197,7 @@ fn test_write_ack_packet() -> Result<()> {
         },
         tx_hash: None,
         status: PacketStatus::Recv,
+        ack: None,
     };
 
     let packet_cell_out_point = context.create_cell(
@@ -236,16 +230,15 @@ fn test_write_ack_packet() -> Result<()> {
         &config,
         channel_cell,
         packet_cell,
-        vec![],
+        vec![1],
     )?;
-    let tx = tx
-        .input(
-            packed::CellInput::new_builder()
-                .previous_output(always_success_cell)
-                .build(),
-        )
-        .cell_dep(always_success_contract_dep);
+    let tx = tx.input(
+        packed::CellInput::new_builder()
+            .previous_output(always_success_cell)
+            .build(),
+    );
     let tx = add_ibc_envelope(tx, &envelope).build();
+    let tx = context.complete_tx(tx);
 
     // Test cell parsing.
     PacketCell::parse(tx.clone().into(), 1, &config)?;
@@ -268,9 +261,6 @@ fn test_consume_ack_packet() -> Result<()> {
     let always_success_lock = context
         .build_script(&always_success_contract, Bytes::new())
         .unwrap();
-    let always_success_contract_dep = packed::CellDep::new_builder()
-        .out_point(always_success_contract)
-        .build();
     let always_success_cell = context.create_cell(
         packed::CellOutput::new_builder()
             .lock(always_success_lock.clone())
@@ -305,6 +295,7 @@ fn test_consume_ack_packet() -> Result<()> {
         },
         tx_hash: None,
         status: PacketStatus::Ack,
+        ack: Some(vec![1]),
     };
 
     let packet_cell_out_point = context.create_cell(
@@ -337,14 +328,13 @@ fn test_consume_ack_packet() -> Result<()> {
 
     let (tx, envelope) =
         assemble_consume_ack_packet_partial_transaction(packet_contract_cell_dep, packet_cell)?;
-    let tx = tx
-        .input(
-            packed::CellInput::new_builder()
-                .previous_output(always_success_cell)
-                .build(),
-        )
-        .cell_dep(always_success_contract_dep);
+    let tx = tx.input(
+        packed::CellInput::new_builder()
+            .previous_output(always_success_cell)
+            .build(),
+    );
     let tx = add_ibc_envelope(tx, &envelope).build();
+    let tx = context.complete_tx(tx);
 
     context.set_capture_debug(true);
     let r = context.verify_tx(&tx, u64::MAX);

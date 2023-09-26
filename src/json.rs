@@ -8,6 +8,7 @@ use ckb_jsonrpc_types::JsonBytes;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs, SerializeAs};
 
+#[serde_as]
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonIbcPacket {
@@ -16,6 +17,8 @@ pub struct JsonIbcPacket {
     #[serde(with = "JsonPacketStatus")]
     pub status: PacketStatus,
     pub tx_hash: Option<H256>,
+    #[serde_as(as = "Option<HexBytes>")]
+    pub ack: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -33,6 +36,7 @@ impl From<&IbcPacket> for JsonIbcPacket {
             packet: value.packet.clone(),
             status: value.status,
             tx_hash: value.tx_hash.map(|v| <[u8; 32]>::from(v).into()),
+            ack: value.ack.clone(),
         }
     }
 }
@@ -43,6 +47,7 @@ impl From<JsonIbcPacket> for IbcPacket {
             packet: value.packet,
             status: value.status,
             tx_hash: value.tx_hash.map(|v| <[u8; 32]>::from(v).into()),
+            ack: value.ack,
         }
     }
 }

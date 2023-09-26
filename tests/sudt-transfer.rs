@@ -526,6 +526,9 @@ impl<'a> Args<'a> {
     }
 }
 
+/// FungibleTokenPacketData defines a struct for the packet payload
+/// See FungibleTokenPacketData spec:
+/// <https://github.com/cosmos/ibc/tree/master/spec/app/ics-020-fungible-token-transfer#data-structures>
 #[derive(Message)]
 pub struct FungibleTokenPacketData {
     /// hex(sudt type script)

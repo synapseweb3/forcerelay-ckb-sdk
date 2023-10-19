@@ -368,7 +368,6 @@ async fn send(
             )
             .pack(),
         )
-        .witness([].pack())
         .cell_dep(sudt_transfer_dep.clone())
         .cell_dep(sudt_dep);
 

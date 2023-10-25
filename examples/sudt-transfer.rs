@@ -35,6 +35,7 @@ use futures::TryStreamExt;
 use prost::Message;
 use secp256k1::Secp256k1;
 use serde::Deserialize;
+use tokio::task::block_in_place;
 
 #[derive(Parser)]
 struct Cli {
@@ -668,6 +669,15 @@ fn complete_tx(
     sender: packed::Script,
     sender_key: secp256k1::SecretKey,
 ) -> Result<TransactionView> {
+    block_in_place(|| complete_tx_inner(ckb_rpc, tx, sender, sender_key))
+}
+
+fn complete_tx_inner(
+    ckb_rpc: &str,
+    tx: &TransactionView,
+    sender: packed::Script,
+    sender_key: secp256k1::SecretKey,
+) -> Result<TransactionView> {
     // Build ScriptUnlocker
     let signer = SecpCkbRawKeySigner::new_with_secret_keys(vec![sender_key]);
     let sighash_unlocker = SecpSighashUnlocker::from(Box::new(signer) as Box<_>);
@@ -717,6 +727,10 @@ fn complete_tx(
 }
 
 fn send_transaction(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
+    block_in_place(|| send_transaction_inner(url, tx))
+}
+
+fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
     let mut client = ckb_sdk::CkbRpcClient::new(url);
     let tx_hash = client.send_transaction(
         tx.data().into(),

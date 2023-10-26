@@ -93,6 +93,17 @@ async fn main() -> Result<()> {
     let address = AddressPayload::from_pubkey(&pubkey);
     let user_lock_script = packed::Script::from(&address);
 
+    println!(
+        "port: {}",
+        hex::encode(
+            config
+                .sdk_config
+                .user_lock_script()
+                .calc_script_hash()
+                .as_slice()
+        )
+    );
+
     ensure!(
         config.sdk_config.user_lock_script().code_hash()
             == packed::Script::from(config.sudt_transfer_contract_type_script.clone())

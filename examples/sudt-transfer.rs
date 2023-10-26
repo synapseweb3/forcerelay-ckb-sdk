@@ -49,8 +49,8 @@ struct Cli {
 enum Commands {
     /// Send SUDT
     Send {
-        #[arg(short, long, value_name = "JSON SCRIPT")]
-        sudt_type_script: String,
+        #[arg(short, long, value_name = "SUDT NAME", alias = "sudt-type-script")]
+        sudt: String,
         #[arg(short, long, value_name = "HEX ADDRESS")]
         receiver: String,
         #[arg(short, long)]
@@ -58,8 +58,8 @@ enum Commands {
     },
     /// Create st-cell
     CreateStCell {
-        #[arg(short, long, value_name = "JSON SCRIPT")]
-        sudt_type_script: String,
+        #[arg(short, long, value_name = "SUDT NAME", alias = "sudt-type-script")]
+        sudt: String,
     },
     /// Consume ACK
     ConsumeAck,
@@ -75,6 +75,9 @@ struct Config {
     private_key: String,
     ckb_rpc_url: String,
     sudt_transfer_contract_type_script: json::Script,
+    /// Sudt name to sudt type script map.
+    #[serde(default)]
+    sudt: HashMap<String, json::Script>,
 }
 
 #[tokio::main]
@@ -113,25 +116,13 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Recv => receive(config, sk, user_lock_script).await,
-        Commands::CreateStCell { sudt_type_script } => {
-            create_st_cell(config, sk, user_lock_script, sudt_type_script).await
-        }
+        Commands::CreateStCell { sudt } => create_st_cell(config, sk, user_lock_script, sudt).await,
         Commands::ConsumeAck => consume_ack(config, sk, user_lock_script).await,
         Commands::Send {
-            sudt_type_script,
+            sudt,
             receiver,
             amount,
-        } => {
-            send(
-                config,
-                sk,
-                user_lock_script,
-                sudt_type_script,
-                receiver,
-                amount,
-            )
-            .await
-        }
+        } => send(config, sk, user_lock_script, sudt, receiver, amount).await,
     }
 }
 
@@ -203,16 +194,29 @@ async fn consume_ack(
     Ok(())
 }
 
+fn get_sudt_type_script(config: &Config, sudt: &str) -> Result<packed::Script> {
+    if sudt.trim_start().starts_with('{') {
+        let sudt: json::Script = serde_json::from_str(sudt).context("parsing sudt type script")?;
+        Ok(sudt.into())
+    } else {
+        Ok(config
+            .sudt
+            .get(sudt)
+            .with_context(|| format!("sudt {sudt} not found in config file"))?
+            .clone()
+            .into())
+    }
+}
+
 async fn create_st_cell(
     config: Config,
     sk: secp256k1::SecretKey,
     user_lock_script: packed::Script,
-    sudt_type_script: String,
+    sudt: String,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
-    let sudt_type_script: json::Script = serde_json::from_str(&sudt_type_script)?;
-    let sudt_type_script = packed::Script::from(sudt_type_script);
+    let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
 
     let st_cell_lock_script = config.sdk_config.user_lock_script();
 
@@ -245,14 +249,13 @@ async fn send(
     config: Config,
     sk: secp256k1::SecretKey,
     user_lock_script: packed::Script,
-    sudt_type_script: String,
+    sudt: String,
     receiver: String,
     amount: u128,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
-    let sudt_type_script: json::Script = serde_json::from_str(&sudt_type_script)?;
-    let sudt_type_script = packed::Script::from(sudt_type_script);
+    let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
 
     // Search st-cell.
     let sudt_transfer_dep = simple_dep(

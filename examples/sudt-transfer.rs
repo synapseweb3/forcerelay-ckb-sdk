@@ -254,7 +254,8 @@ async fn send(
     let sudt_search_filter = ckb_indexer::SearchKeyFilter {
         script: Some(sudt_type_script.clone().into()),
         script_len_range: {
-            let tl = sudt_type_script.as_slice().len() as u64;
+            // script_len is caculated by (code_hash + hash_type + args).len
+            let tl = sudt_type_script.args().raw_data().len() as u64 + 33;
             Some([tl.into(), (tl + 1).into()])
         },
         output_data_len_range: Some([16.into(), 17.into()]),

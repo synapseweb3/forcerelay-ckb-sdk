@@ -49,8 +49,8 @@ struct Cli {
 enum Commands {
     /// Send SUDT
     Send {
-        #[arg(short, long, value_name = "JSON SCRIPT")]
-        sudt_type_script: String,
+        #[arg(short, long, value_name = "SUDT NAME", alias = "sudt-type-script")]
+        sudt: String,
         #[arg(short, long, value_name = "HEX ADDRESS")]
         receiver: String,
         #[arg(short, long)]
@@ -58,8 +58,8 @@ enum Commands {
     },
     /// Create st-cell
     CreateStCell {
-        #[arg(short, long, value_name = "JSON SCRIPT")]
-        sudt_type_script: String,
+        #[arg(short, long, value_name = "SUDT NAME", alias = "sudt-type-script")]
+        sudt: String,
     },
     /// Consume ACK
     ConsumeAck,
@@ -75,6 +75,9 @@ struct Config {
     private_key: String,
     ckb_rpc_url: String,
     sudt_transfer_contract_type_script: json::Script,
+    /// Sudt name to sudt type script map.
+    #[serde(default)]
+    sudt: HashMap<String, json::Script>,
 }
 
 #[tokio::main]
@@ -93,6 +96,17 @@ async fn main() -> Result<()> {
     let address = AddressPayload::from_pubkey(&pubkey);
     let user_lock_script = packed::Script::from(&address);
 
+    println!(
+        "port: {}",
+        hex::encode(
+            config
+                .sdk_config
+                .user_lock_script()
+                .calc_script_hash()
+                .as_slice()
+        )
+    );
+
     ensure!(
         config.sdk_config.user_lock_script().code_hash()
             == packed::Script::from(config.sudt_transfer_contract_type_script.clone())
@@ -102,25 +116,13 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Recv => receive(config, sk, user_lock_script).await,
-        Commands::CreateStCell { sudt_type_script } => {
-            create_st_cell(config, sk, user_lock_script, sudt_type_script).await
-        }
+        Commands::CreateStCell { sudt } => create_st_cell(config, sk, user_lock_script, sudt).await,
         Commands::ConsumeAck => consume_ack(config, sk, user_lock_script).await,
         Commands::Send {
-            sudt_type_script,
+            sudt,
             receiver,
             amount,
-        } => {
-            send(
-                config,
-                sk,
-                user_lock_script,
-                sudt_type_script,
-                receiver,
-                amount,
-            )
-            .await
-        }
+        } => send(config, sk, user_lock_script, sudt, receiver, amount).await,
     }
 }
 
@@ -192,16 +194,29 @@ async fn consume_ack(
     Ok(())
 }
 
+fn get_sudt_type_script(config: &Config, sudt: &str) -> Result<packed::Script> {
+    if sudt.trim_start().starts_with('{') {
+        let sudt: json::Script = serde_json::from_str(sudt).context("parsing sudt type script")?;
+        Ok(sudt.into())
+    } else {
+        Ok(config
+            .sudt
+            .get(sudt)
+            .with_context(|| format!("sudt {sudt} not found in config file"))?
+            .clone()
+            .into())
+    }
+}
+
 async fn create_st_cell(
     config: Config,
     sk: secp256k1::SecretKey,
     user_lock_script: packed::Script,
-    sudt_type_script: String,
+    sudt: String,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
-    let sudt_type_script: json::Script = serde_json::from_str(&sudt_type_script)?;
-    let sudt_type_script = packed::Script::from(sudt_type_script);
+    let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
 
     let st_cell_lock_script = config.sdk_config.user_lock_script();
 
@@ -234,14 +249,13 @@ async fn send(
     config: Config,
     sk: secp256k1::SecretKey,
     user_lock_script: packed::Script,
-    sudt_type_script: String,
+    sudt: String,
     receiver: String,
     amount: u128,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
-    let sudt_type_script: json::Script = serde_json::from_str(&sudt_type_script)?;
-    let sudt_type_script = packed::Script::from(sudt_type_script);
+    let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
 
     // Search st-cell.
     let sudt_transfer_dep = simple_dep(
@@ -722,6 +736,13 @@ fn complete_tx_inner(
         &header_dep_resolver,
     )?;
 
+    // Remove tailing empty witnesses.
+    let mut ws = Vec::from_iter(tx.witnesses());
+    while !ws.is_empty() && ws[ws.len() - 1].is_empty() {
+        ws.pop();
+    }
+    let tx = tx.as_advanced_builder().set_witnesses(ws).build();
+
     let (tx, _) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
 
     Ok(tx)
@@ -733,17 +754,23 @@ fn send_transaction(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
 
 fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
     let mut client = ckb_sdk::CkbRpcClient::new(url);
-    let tx_hash = client.send_transaction(
-        tx.data().into(),
-        Some(ckb_jsonrpc_types::OutputsValidator::Passthrough),
-    )?;
+    let tx: json::Transaction = tx.data().into();
+    let tx_hash = client
+        .send_transaction(tx.clone(), Some(json::OutputsValidator::Passthrough))
+        .map_err(|e| {
+            println!(
+                "Transaction: {}",
+                serde_json::to_string_pretty(&tx).unwrap()
+            );
+            e
+        })?;
     println!("sent transaction {tx_hash}");
     loop {
         let tx = client.get_transaction_status(tx_hash.clone())?;
         match tx.tx_status.status {
-            ckb_jsonrpc_types::Status::Committed => break,
-            ckb_jsonrpc_types::Status::Rejected => panic!("rejected"),
-            ckb_jsonrpc_types::Status::Unknown => panic!("unknown"),
+            json::Status::Committed => break,
+            json::Status::Rejected => panic!("rejected"),
+            json::Status::Unknown => panic!("unknown"),
             _ => {}
         }
         std::thread::sleep(Duration::from_secs(1));

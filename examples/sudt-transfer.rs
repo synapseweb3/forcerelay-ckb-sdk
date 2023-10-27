@@ -736,6 +736,13 @@ fn complete_tx_inner(
         &header_dep_resolver,
     )?;
 
+    // Remove tailing empty witnesses.
+    let mut ws = Vec::from_iter(tx.witnesses());
+    while !ws.is_empty() && ws[ws.len() - 1].is_empty() {
+        ws.pop();
+    }
+    let tx = tx.as_advanced_builder().set_witnesses(ws).build();
+
     let (tx, _) = unlock_tx(tx, &tx_dep_provider, &unlockers)?;
 
     Ok(tx)
@@ -747,17 +754,23 @@ fn send_transaction(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
 
 fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
     let mut client = ckb_sdk::CkbRpcClient::new(url);
-    let tx_hash = client.send_transaction(
-        tx.data().into(),
-        Some(ckb_jsonrpc_types::OutputsValidator::Passthrough),
-    )?;
+    let tx: json::Transaction = tx.data().into();
+    let tx_hash = client
+        .send_transaction(tx.clone(), Some(json::OutputsValidator::Passthrough))
+        .map_err(|e| {
+            println!(
+                "Transaction: {}",
+                serde_json::to_string_pretty(&tx).unwrap()
+            );
+            e
+        })?;
     println!("sent transaction {tx_hash}");
     loop {
         let tx = client.get_transaction_status(tx_hash.clone())?;
         match tx.tx_status.status {
-            ckb_jsonrpc_types::Status::Committed => break,
-            ckb_jsonrpc_types::Status::Rejected => panic!("rejected"),
-            ckb_jsonrpc_types::Status::Unknown => panic!("unknown"),
+            json::Status::Committed => break,
+            json::Status::Rejected => panic!("rejected"),
+            json::Status::Unknown => panic!("unknown"),
             _ => {}
         }
         std::thread::sleep(Duration::from_secs(1));

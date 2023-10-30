@@ -12,11 +12,11 @@ members = ["forcerelay-ckb-sdk-server"]
 anyhow = "1.0.72"
 async-stream = "0.3.5"
 bytes = "1.4.0"
-ckb-fixed-hash = "0.108.0"
+ckb-fixed-hash = "0.111.0"
 ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", rev = "bfd8ab46a1f1fc" }
-ckb-jsonrpc-types = "0.108.0"
-ckb-sdk = "2.5.0"
-ckb-types = "0.108.0"
+ckb-jsonrpc-types = "0.111.0"
+ckb-sdk = "3.0.0"
+ckb-types = "0.111.0"
 faster-hex = "0.8.0"
 futures = "0.3.28"
 jsonrpc-utils = { version = "0.2.0", features = ["macros", "client"] }
@@ -29,7 +29,7 @@ tracing = "0.1.37"
 
 [dev-dependencies]
 axon-types = { git = "https://github.com/axonweb3/axon-contract", rev = "8c2338a" }
-ckb-testtool = "0.9.1"
+ckb-testtool = "0.10.0"
 clap = { version = "4.4.6", features = ["derive"] }
 hex = "0.4.3"
 prost = { version = "0.12.0", features = ["prost-derive"] }

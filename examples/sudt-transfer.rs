@@ -71,8 +71,12 @@ enum Commands {
 struct Config {
     #[serde(flatten)]
     sdk_config: SdkConfig,
-    /// End user sighash(secp256k1) private key in hex without 0x prefix.
-    private_key: String,
+    /// Specify end user sighash(secp256k1) private key in hex without 0x
+    /// prefix, or read the key from a binary file, or pass the key (still in
+    /// hex without 0x prefix) via the SUDT_TRANSFER_PRIVATE_KEY environment
+    /// variable.
+    private_key: Option<String>,
+    private_key_file: Option<String>,
     ckb_rpc_url: String,
     sudt_transfer_contract_type_script: json::Script,
     /// Sudt name to sudt type script map.
@@ -87,8 +91,21 @@ async fn main() -> Result<()> {
     let config = fs::read_to_string(cli.config).context("reading config file")?;
     let config: Config = toml::from_str(&config).context("parsing config file")?;
 
-    let key = hex::decode(&config.private_key).context("decoding private key")?;
-    let sk = secp256k1::SecretKey::from_slice(&key).context("decoding private key")?;
+    if config.private_key.is_some() && config.private_key_file.is_some() {
+        bail!("invalid config: both private_key and private_key_file are present");
+    }
+
+    let key = if let Some(ref k) = config.private_key {
+        hex::decode(k).context("hex decoding private key")?
+    } else if let Some(ref kf) = config.private_key_file {
+        fs::read(kf).context("reading private key file")?
+    } else {
+        let k = std::env::var("SUDT_TRANSFER_PRIVATE_KEY")
+            .context("private key is not specified in config or the SUDT_TRANSFER_PRIVATE_KEY environment variable")?;
+        hex::decode(k).context("hex decoding private key")?
+    };
+    let sk = secp256k1::SecretKey::from_slice(&key)
+        .context("decoding private key (private key should be 32-byte long)")?;
 
     let secp = Secp256k1::new();
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &sk);

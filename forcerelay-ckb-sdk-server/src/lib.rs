@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ckb_jsonrpc_types::{CellDep, Transaction, TransactionView};
-use ckb_types::packed;
+use ckb_types::{packed, prelude::*};
 use forcerelay_ckb_sdk::{
     ckb_jsonrpc_types,
     ckb_rpc_client::CkbRpcClient,

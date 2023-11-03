@@ -731,7 +731,7 @@ fn complete_tx_inner(
     //   * HeaderDepResolver
     //   * CellCollector
     //   * TransactionDependencyProvider
-    let mut ckb_client = ckb_sdk::CkbRpcClient::new(ckb_rpc);
+    let ckb_client = ckb_sdk::CkbRpcClient::new(ckb_rpc);
     let cell_dep_resolver = {
         let genesis_block = ckb_client.get_block_by_number(0.into())?.unwrap();
         DefaultCellDepResolver::from_genesis(&genesis_block.into())?
@@ -770,7 +770,7 @@ fn send_transaction(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
 }
 
 fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
-    let mut client = ckb_sdk::CkbRpcClient::new(url);
+    let client = ckb_sdk::CkbRpcClient::new(url);
     let tx: json::Transaction = tx.data().into();
     let tx_hash = client
         .send_transaction(tx.clone(), Some(json::OutputsValidator::Passthrough))

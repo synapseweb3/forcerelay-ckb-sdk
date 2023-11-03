@@ -537,101 +537,106 @@ async fn receive(
         .as_bytes()
         .slice(..20);
 
-    let mut recv_packets = pin!(
-        PacketCell::subscribe(client.clone(), config.sdk_config.clone())
-            .try_filter(|cell| futures::future::ready(cell.is_recv_packet()))
-    );
-    // Filter for a packet that is sent to us.
-    let (p, pd) = loop {
-        let p = recv_packets
-            .try_next()
-            .await?
-            .context("no packet cell for us")?;
-        let pd = FungibleTokenPacketData::decode(&p.packet.packet.data[..])?;
-        if pd.receiver == receiver {
-            break (p, pd);
-        } else {
-            println!("skipping packet {pd}");
-        }
-    };
-    println!("receiving packet\n{pd}\n{:?}", p.packet.packet);
+    let packets = PacketCell::search(&client, &config.sdk_config, 100, &mut 0)
+        .await?
+        .into_iter()
+        .filter_map(|p| {
+            if !p.is_recv_packet() {
+                return None;
+            }
+            let pd = FungibleTokenPacketData::decode(&p.packet.packet.data[..]).ok()?;
+            if pd.receiver == receiver {
+                Some((p, pd))
+            } else {
+                println!("skipping packet\n{pd:?}\n{:?}", p.packet.packet);
+                None
+            }
+        });
+    let mut received = 0;
+    for (p, pd) in packets {
+        println!("receiving packet\n{pd:?}\n{:?}", p.packet.packet);
 
-    let base_denom = pd.denom.split('/').last().context("get base denom")?;
-    let sudt_type_hash = hex::decode(base_denom).context("decode base denom")?;
+        let base_denom = pd.denom.split('/').last().context("get base denom")?;
+        let sudt_type_hash = hex::decode(base_denom).context("decode base denom")?;
 
-    let (sudt_transfer_dep, st_cell, st_cell_amount, sudt_type_script) =
-        get_st_cell_by_sudt_type_hash(&client, config, sudt_type_hash).await?;
+        let (sudt_transfer_dep, st_cell, st_cell_amount, sudt_type_script) =
+            get_st_cell_by_sudt_type_hash(&client, &config, sudt_type_hash).await?;
 
-    let sudt_dep = get_type_dep_from_cell(&client, &st_cell)
-        .await
-        .context("get sudt dep")?;
+        let sudt_dep = get_type_dep_from_cell(&client, &st_cell)
+            .await
+            .context("get sudt dep")?;
 
-    let axon_metadata_cell = get_latest_cell_by_type_script(
-        &client,
-        config.sdk_config.axon_metadata_type_script().into(),
-    )
-    .await?;
-    let channel_contract_cell = get_latest_cell_by_type_script(
-        &client,
-        config.sdk_config.channel_contract_type_script().into(),
-    )
-    .await?;
-    let packet_contract_cell = get_latest_cell_by_type_script(
-        &client,
-        config.sdk_config.packet_contract_type_script().into(),
-    )
-    .await?;
-    let channel = IbcChannelCell::get_latest(&client, &config.sdk_config).await?;
+        let axon_metadata_cell = get_latest_cell_by_type_script(
+            &client,
+            config.sdk_config.axon_metadata_type_script().into(),
+        )
+        .await?;
+        let channel_contract_cell = get_latest_cell_by_type_script(
+            &client,
+            config.sdk_config.channel_contract_type_script().into(),
+        )
+        .await?;
+        let packet_contract_cell = get_latest_cell_by_type_script(
+            &client,
+            config.sdk_config.packet_contract_type_script().into(),
+        )
+        .await?;
+        let channel = IbcChannelCell::get_latest(&client, &config.sdk_config).await?;
 
-    let (tx, envelope) = assemble_write_ack_partial_transaction(
-        simple_dep(axon_metadata_cell.out_point.into()),
-        simple_dep(channel_contract_cell.out_point.into()),
-        simple_dep(packet_contract_cell.out_point.into()),
-        &config.sdk_config,
-        channel,
-        p,
-        vec![1],
-    )?;
+        let (tx, envelope) = assemble_write_ack_partial_transaction(
+            simple_dep(axon_metadata_cell.out_point.into()),
+            simple_dep(channel_contract_cell.out_point.into()),
+            simple_dep(packet_contract_cell.out_point.into()),
+            &config.sdk_config,
+            channel,
+            p,
+            vec![1],
+        )?;
 
-    let user_input = get_capacity_input(&client, &receiver_lock_script).await?;
+        let user_input = get_capacity_input(&client, &receiver_lock_script).await?;
 
-    // sighash placeholder witness.
-    let placeholder_witness = packed::WitnessArgs::new_builder()
-        .lock(Some(Bytes::from_static(&[0u8; 65])).pack())
-        .build();
-    let tx = tx
-        // st-cell input/output.
-        .input(simple_input(st_cell.out_point.into()))
-        .output(packed::CellOutput::from(st_cell.output))
-        .output_data(
-            sudt_amount_data(
-                st_cell_amount
-                    .checked_sub(pd.amount.into())
-                    .context("st-cell amount not enough")?,
+        // sighash placeholder witness.
+        let placeholder_witness = packed::WitnessArgs::new_builder()
+            .lock(Some(Bytes::from_static(&[0u8; 65])).pack())
+            .build();
+        let tx = tx
+            // st-cell input/output.
+            .input(simple_input(st_cell.out_point.into()))
+            .output(packed::CellOutput::from(st_cell.output))
+            .output_data(
+                sudt_amount_data(
+                    st_cell_amount
+                        .checked_sub(pd.amount.into())
+                        .context("st-cell amount not enough")?,
+                )
+                .pack(),
             )
-            .pack(),
-        )
-        .witness([].pack())
-        .cell_dep(sudt_transfer_dep.clone())
-        .cell_dep(sudt_dep)
-        // sudt output.
-        .output(
-            packed::CellOutput::new_builder()
-                .lock(receiver_lock_script.clone())
-                .type_(Some(sudt_type_script).pack())
-                .build_exact_capacity(Capacity::bytes(16).unwrap())
-                .unwrap(),
-        )
-        .output_data(sudt_amount_data(pd.amount.into()).pack())
-        // capacity input and witness.
-        .input(simple_input(user_input.out_point.into()))
-        .witness(placeholder_witness.as_bytes().pack());
+            .witness([].pack())
+            .cell_dep(sudt_transfer_dep.clone())
+            .cell_dep(sudt_dep)
+            // sudt output.
+            .output(
+                packed::CellOutput::new_builder()
+                    .lock(receiver_lock_script.clone())
+                    .type_(Some(sudt_type_script).pack())
+                    .build_exact_capacity(Capacity::bytes(16).unwrap())
+                    .unwrap(),
+            )
+            .output_data(sudt_amount_data(pd.amount.into()).pack())
+            // capacity input and witness.
+            .input(simple_input(user_input.out_point.into()))
+            .witness(placeholder_witness.as_bytes().pack());
 
-    let tx = add_ibc_envelope(tx, &envelope).build();
+        let tx = add_ibc_envelope(tx, &envelope).build();
 
-    let tx = complete_tx(&config.ckb_rpc_url, &tx, receiver_lock_script, sk)?;
+        let tx = complete_tx(&config.ckb_rpc_url, &tx, receiver_lock_script.clone(), sk)?;
 
-    send_transaction(&config.ckb_rpc_url, tx)?;
+        send_transaction(&config.ckb_rpc_url, tx)?;
+
+        received += 1;
+    }
+
+    println!("received {received} packets");
 
     Ok(())
 }

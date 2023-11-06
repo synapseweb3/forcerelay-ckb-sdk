@@ -783,14 +783,30 @@ fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
         })?;
     println!("sent transaction {tx_hash}");
     loop {
-        let tx = client.get_transaction_status(tx_hash.clone())?;
-        match tx.tx_status.status {
+        let res = client.get_transaction_status(tx_hash.clone())?;
+        match res.tx_status.status {
             json::Status::Committed => break,
-            json::Status::Rejected => panic!("rejected"),
-            json::Status::Unknown => panic!("unknown"),
-            _ => {}
+            json::Status::Rejected => {
+                bail!("transaction rejected, reason: {:?}", res.tx_status.reason)
+            }
+            json::Status::Unknown => {
+                println!("transaction unknown, sending again");
+                client
+                    .send_transaction(tx.clone(), Some(json::OutputsValidator::Passthrough))
+                    .map_err(|e| {
+                        println!(
+                            "Transaction: {}",
+                            serde_json::to_string_pretty(&res).unwrap()
+                        );
+                        e
+                    })?;
+                println!("sent transaction {tx_hash}");
+            }
+            _ => {
+                println!("transaction is {:?}", res.tx_status.status);
+            }
         }
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(5));
     }
     println!("transaction committed {tx_hash}");
     Ok(tx_hash.0)

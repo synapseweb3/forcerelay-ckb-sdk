@@ -111,45 +111,47 @@ async fn main() -> Result<()> {
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &sk);
 
     let address = AddressPayload::from_pubkey(&pubkey);
-    let user_lock_script = packed::Script::from(&address);
+    let sender_lock_script = packed::Script::from(&address);
 
     println!(
         "port: {}",
         hex::encode(
             config
                 .sdk_config
-                .user_lock_script()
+                .module_lock_script()
                 .calc_script_hash()
                 .as_slice()
         )
     );
 
     ensure!(
-        config.sdk_config.user_lock_script().code_hash()
+        config.sdk_config.module_lock_script().code_hash()
             == packed::Script::from(config.sudt_transfer_contract_type_script.clone())
                 .calc_script_hash(),
         "port id code hash is not sudt transfer contract type script hash",
     );
 
     match cli.command {
-        Commands::Recv => receive(config, sk, user_lock_script).await,
-        Commands::CreateStCell { sudt } => create_st_cell(config, sk, user_lock_script, sudt).await,
-        Commands::ConsumeAck => consume_ack(config, sk, user_lock_script).await,
+        Commands::Recv => receive(config, sk, sender_lock_script).await,
+        Commands::CreateStCell { sudt } => {
+            create_st_cell(config, sk, sender_lock_script, sudt).await
+        }
+        Commands::ConsumeAck => consume_ack(config, sk, sender_lock_script).await,
         Commands::Send {
             sudt,
             receiver,
             amount,
-        } => send(config, sk, user_lock_script, sudt, receiver, amount).await,
+        } => send(config, sk, sender_lock_script, sudt, receiver, amount).await,
     }
 }
 
 async fn consume_ack(
     config: Config,
     sk: secp256k1::SecretKey,
-    user_lock_script: packed::Script,
+    sender_lock_script: packed::Script,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
-    let sender = user_lock_script.calc_script_hash().as_bytes().slice(..20);
+    let sender = sender_lock_script.calc_script_hash().as_bytes().slice(..20);
 
     let mut ack_packets = pin!(
         PacketCell::subscribe(client.clone(), config.sdk_config.clone())
@@ -178,7 +180,7 @@ async fn consume_ack(
         .await
         .context("get sudt dep")?;
 
-    let user_input = get_capacity_input(&client, &user_lock_script).await?;
+    let user_input = get_capacity_input(&client, &sender_lock_script).await?;
 
     let packet_contract_cell = get_latest_cell_by_type_script(
         &client,
@@ -205,7 +207,7 @@ async fn consume_ack(
         .input(simple_input(user_input.out_point.into()))
         .witness(placeholder_witness.as_bytes().pack());
     let tx = add_ibc_envelope(tx, &envelope).build();
-    let tx = complete_tx(&config.ckb_rpc_url, &tx, user_lock_script, sk)?;
+    let tx = complete_tx(&config.ckb_rpc_url, &tx, sender_lock_script, sk)?;
     send_transaction(&config.ckb_rpc_url, tx)?;
 
     Ok(())
@@ -228,14 +230,14 @@ fn get_sudt_type_script(config: &Config, sudt: &str) -> Result<packed::Script> {
 async fn create_st_cell(
     config: Config,
     sk: secp256k1::SecretKey,
-    user_lock_script: packed::Script,
+    sender_lock_script: packed::Script,
     sudt: String,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
     let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
 
-    let st_cell_lock_script = config.sdk_config.user_lock_script();
+    let st_cell_lock_script = config.sdk_config.module_lock_script();
 
     let a_sudt_cell = get_latest_cell_by_type_script(&client, sudt_type_script.clone().into())
         .await
@@ -256,7 +258,7 @@ async fn create_st_cell(
         .cell_dep(sudt_dep)
         .build();
 
-    let tx = complete_tx(&config.ckb_rpc_url, &tx, user_lock_script, sk)?;
+    let tx = complete_tx(&config.ckb_rpc_url, &tx, sender_lock_script, sk)?;
     send_transaction(&config.ckb_rpc_url, tx)?;
 
     Ok(())
@@ -265,7 +267,7 @@ async fn create_st_cell(
 async fn send(
     config: Config,
     sk: secp256k1::SecretKey,
-    user_lock_script: packed::Script,
+    sender_lock_script: packed::Script,
     sudt: String,
     receiver: String,
     amount: u128,
@@ -281,7 +283,7 @@ async fn send(
             .out_point
             .into(),
     );
-    let st_cell_lock_script = config.sdk_config.user_lock_script();
+    let st_cell_lock_script = config.sdk_config.module_lock_script();
     let sudt_search_filter = ckb_indexer::SearchKeyFilter {
         script: Some(sudt_type_script.clone().into()),
         script_len_range: {
@@ -329,7 +331,7 @@ async fn send(
             ckb_indexer::SearchKey {
                 filter: Some(sudt_search_filter),
                 group_by_transaction: Some(true),
-                script: user_lock_script.clone().into(),
+                script: sender_lock_script.clone().into(),
                 script_search_mode: Some(ckb_indexer::ScriptSearchMode::Exact),
                 script_type: ckb_indexer::ScriptType::Lock,
                 with_data: Some(true),
@@ -374,7 +376,7 @@ async fn send(
     let channel = IbcChannelCell::get_latest(&client, &config.sdk_config).await?;
     let data = FungibleTokenPacketData {
         amount: amount.try_into().context("amount overflow")?,
-        sender: user_lock_script.calc_script_hash().as_bytes()[..20].to_vec(),
+        sender: sender_lock_script.calc_script_hash().as_bytes()[..20].to_vec(),
         receiver: hex::decode(receiver.strip_prefix("0x").unwrap_or(&receiver))
             .context("receiver")?,
         denom: hex::encode(sudt_type_script.calc_script_hash().as_slice()),
@@ -424,13 +426,13 @@ async fn send(
 
     let tx = add_ibc_envelope(tx, &envelope).build();
 
-    let tx = complete_tx(&config.ckb_rpc_url, &tx, user_lock_script.clone(), sk)?;
+    let tx = complete_tx(&config.ckb_rpc_url, &tx, sender_lock_script.clone(), sk)?;
 
     send_transaction(&config.ckb_rpc_url, tx)?;
 
     println!("consuming ack");
 
-    consume_ack(config, sk, user_lock_script).await?;
+    consume_ack(config, sk, sender_lock_script).await?;
 
     Ok(())
 }
@@ -438,10 +440,13 @@ async fn send(
 async fn receive(
     config: Config,
     sk: secp256k1::SecretKey,
-    user_lock_script: packed::Script,
+    receiver_lock_script: packed::Script,
 ) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
-    let receiver = user_lock_script.calc_script_hash().as_bytes().slice(..20);
+    let receiver = receiver_lock_script
+        .calc_script_hash()
+        .as_bytes()
+        .slice(..20);
 
     let mut recv_packets = pin!(
         PacketCell::subscribe(client.clone(), config.sdk_config.clone())
@@ -499,7 +504,7 @@ async fn receive(
         vec![1],
     )?;
 
-    let user_input = get_capacity_input(&client, &user_lock_script).await?;
+    let user_input = get_capacity_input(&client, &receiver_lock_script).await?;
 
     // sighash placeholder witness.
     let placeholder_witness = packed::WitnessArgs::new_builder()
@@ -523,7 +528,7 @@ async fn receive(
         // sudt output.
         .output(
             packed::CellOutput::new_builder()
-                .lock(user_lock_script.clone())
+                .lock(receiver_lock_script.clone())
                 .type_(Some(sudt_type_script).pack())
                 .build_exact_capacity(Capacity::bytes(16).unwrap())
                 .unwrap(),
@@ -535,7 +540,7 @@ async fn receive(
 
     let tx = add_ibc_envelope(tx, &envelope).build();
 
-    let tx = complete_tx(&config.ckb_rpc_url, &tx, user_lock_script, sk)?;
+    let tx = complete_tx(&config.ckb_rpc_url, &tx, receiver_lock_script, sk)?;
 
     send_transaction(&config.ckb_rpc_url, tx)?;
 
@@ -584,7 +589,7 @@ async fn get_st_cell_by_sudt_type_hash(
             .out_point
             .into(),
     );
-    let st_cell_lock_script = config.sdk_config.user_lock_script();
+    let st_cell_lock_script = config.sdk_config.module_lock_script();
     let st_cells = client
         .get_cells(
             ckb_indexer::SearchKey {

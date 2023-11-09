@@ -1,6 +1,6 @@
 //! An example cli for sending/receiving SUDT with the sudt transfer module.
 
-use std::{collections::HashMap, fs, path::PathBuf, pin::pin, time::Duration};
+use std::{collections::HashMap, fmt, fs, path::PathBuf, pin::pin, time::Duration};
 
 use anyhow::{bail, ensure, Context, Result};
 use bytes::Bytes;
@@ -163,15 +163,15 @@ async fn consume_ack(
         let pd = FungibleTokenPacketData::decode(&p.packet.packet.data[..])?;
         if pd.sender == sender {
             if p.packet.ack.as_deref() != Some(&[1]) {
-                println!("skipping packet {pd:?}");
+                println!("skipping packet {pd}");
                 continue;
             }
             break (p, pd);
         } else {
-            println!("skipping packet {pd:?}");
+            println!("skipping packet {pd}");
         }
     };
-    println!("consuming packet ack\n{pd:?}\n{:?}", p.packet.packet);
+    println!("consuming packet ack\n{pd}\n{:?}", p.packet.packet);
 
     let sudt_type_hash = hex::decode(pd.denom).context("decode base denom")?;
     let (sudt_transfer_dep, st_cell, st_cell_amount, _) =
@@ -376,9 +376,12 @@ async fn send(
     let channel = IbcChannelCell::get_latest(&client, &config.sdk_config).await?;
     let data = FungibleTokenPacketData {
         amount: amount.try_into().context("amount overflow")?,
-        sender: sender_lock_script.calc_script_hash().as_bytes()[..20].to_vec(),
+        sender: sender_lock_script.calc_script_hash().as_bytes()[..20]
+            .to_vec()
+            .into(),
         receiver: hex::decode(receiver.strip_prefix("0x").unwrap_or(&receiver))
-            .context("receiver")?,
+            .context("receiver")?
+            .into(),
         denom: hex::encode(sudt_type_script.calc_script_hash().as_slice()),
     }
     .encode_to_vec();
@@ -462,10 +465,10 @@ async fn receive(
         if pd.receiver == receiver {
             break (p, pd);
         } else {
-            println!("skipping packet {pd:?}");
+            println!("skipping packet {pd}");
         }
     };
-    println!("receiving packet\n{pd:?}\n{:?}", p.packet.packet);
+    println!("receiving packet\n{pd}\n{:?}", p.packet.packet);
 
     let base_denom = pd.denom.split('/').last().context("get base denom")?;
     let sudt_type_hash = hex::decode(base_denom).context("decode base denom")?;
@@ -692,10 +695,21 @@ pub struct FungibleTokenPacketData {
     pub amount: u64,
     /// For ckb address, this should be ckb_blake2b(packed lock script)[..20]
     #[prost(bytes, tag = "3")]
-    pub sender: Vec<u8>,
+    pub sender: Bytes,
     /// For ckb address, this should be ckb_blake2b(packed lock script)[..20]
     #[prost(bytes, tag = "4")]
-    pub receiver: Vec<u8>,
+    pub receiver: Bytes,
+}
+
+impl fmt::Display for FungibleTokenPacketData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FungibleTokenPacketData")
+            .field("denom", &self.denom)
+            .field("amount", &self.amount)
+            .field("sender", &format_args!("{:#x}", self.sender))
+            .field("receiver", &format_args!("{:#x}", self.receiver))
+            .finish()
+    }
 }
 
 /// Balance and sign tx. The sighash dep will be added. This won't add any new

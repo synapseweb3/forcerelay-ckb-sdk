@@ -132,21 +132,21 @@ async fn main() -> Result<()> {
     );
 
     match cli.command {
-        Commands::Recv => receive(config, sk, sender_lock_script).await,
+        Commands::Recv => receive_retry(config, sk, sender_lock_script).await,
         Commands::CreateStCell { sudt } => {
             create_st_cell(config, sk, sender_lock_script, sudt).await
         }
-        Commands::ConsumeAck => consume_ack(config, sk, sender_lock_script).await,
+        Commands::ConsumeAck => consume_ack(&config, sk, sender_lock_script).await,
         Commands::Send {
             sudt,
             receiver,
             amount,
-        } => send(config, sk, sender_lock_script, sudt, receiver, amount).await,
+        } => send_retry_and_consume(config, sk, sender_lock_script, sudt, receiver, amount).await,
     }
 }
 
 async fn consume_ack(
-    config: Config,
+    config: &Config,
     sk: secp256k1::SecretKey,
     sender_lock_script: packed::Script,
 ) -> Result<()> {
@@ -175,7 +175,7 @@ async fn consume_ack(
 
     let sudt_type_hash = hex::decode(pd.denom).context("decode base denom")?;
     let (sudt_transfer_dep, st_cell, st_cell_amount, _) =
-        get_st_cell_by_sudt_type_hash(&client, &config, sudt_type_hash).await?;
+        get_st_cell_by_sudt_type_hash(&client, config, sudt_type_hash).await?;
     let sudt_dep = get_type_dep_from_cell(&client, &st_cell)
         .await
         .context("get sudt dep")?;
@@ -264,7 +264,8 @@ async fn create_st_cell(
     Ok(())
 }
 
-async fn send(
+// XXX: is it possible to send twice due to retry?
+async fn send_retry_and_consume(
     config: Config,
     sk: secp256k1::SecretKey,
     sender_lock_script: packed::Script,
@@ -272,9 +273,50 @@ async fn send(
     receiver: String,
     amount: u128,
 ) -> Result<()> {
+    loop {
+        match send(
+            &config,
+            sk,
+            sender_lock_script.clone(),
+            &sudt,
+            &receiver,
+            amount,
+        )
+        .await
+        {
+            Ok(()) => break,
+            Err(e) => {
+                if let Some(re) = e.downcast_ref::<ckb_sdk::RpcError>() {
+                    match re {
+                        ckb_sdk::RpcError::Rpc(re) if should_retry_code(re.code.code()) => {
+                            println!("Will retry, error: {e:#}");
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                        _ => return Err(e),
+                    }
+                }
+            }
+        }
+    }
+
+    println!("consuming ack");
+    consume_ack(&config, sk, sender_lock_script).await?;
+
+    Ok(())
+}
+
+async fn send(
+    config: &Config,
+    sk: secp256k1::SecretKey,
+    sender_lock_script: packed::Script,
+    sudt: &str,
+    receiver: &str,
+    amount: u128,
+) -> Result<()> {
     let client = CkbRpcClient::new(config.ckb_rpc_url.clone());
 
-    let sudt_type_script = get_sudt_type_script(&config, &sudt)?;
+    let sudt_type_script = get_sudt_type_script(config, sudt)?;
 
     // Search st-cell.
     let sudt_transfer_dep = simple_dep(
@@ -379,7 +421,7 @@ async fn send(
         sender: sender_lock_script.calc_script_hash().as_bytes()[..20]
             .to_vec()
             .into(),
-        receiver: hex::decode(receiver.strip_prefix("0x").unwrap_or(&receiver))
+        receiver: hex::decode(receiver.strip_prefix("0x").unwrap_or(receiver))
             .context("receiver")?
             .into(),
         denom: hex::encode(sudt_type_script.calc_script_hash().as_slice()),
@@ -433,15 +475,35 @@ async fn send(
 
     send_transaction(&config.ckb_rpc_url, tx)?;
 
-    println!("consuming ack");
-
-    consume_ack(config, sk, sender_lock_script).await?;
-
     Ok(())
 }
 
-async fn receive(
+async fn receive_retry(
     config: Config,
+    sk: secp256k1::SecretKey,
+    receiver_lock_script: packed::Script,
+) -> Result<()> {
+    loop {
+        match receive(&config, sk, receiver_lock_script.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if let Some(re) = e.downcast_ref::<ckb_sdk::RpcError>() {
+                    match re {
+                        ckb_sdk::RpcError::Rpc(re) if should_retry_code(re.code.code()) => {
+                            println!("Will retry, error: {e:#}");
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                        _ => return Err(e),
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn receive(
+    config: &Config,
     sk: secp256k1::SecretKey,
     receiver_lock_script: packed::Script,
 ) -> Result<()> {
@@ -474,7 +536,7 @@ async fn receive(
     let sudt_type_hash = hex::decode(base_denom).context("decode base denom")?;
 
     let (sudt_transfer_dep, st_cell, st_cell_amount, sudt_type_script) =
-        get_st_cell_by_sudt_type_hash(&client, &config, sudt_type_hash).await?;
+        get_st_cell_by_sudt_type_hash(&client, config, sudt_type_hash).await?;
 
     let sudt_dep = get_type_dep_from_cell(&client, &st_cell)
         .await
@@ -829,4 +891,8 @@ fn send_transaction_inner(url: &str, tx: TransactionView) -> Result<[u8; 32]> {
     }
     println!("transaction committed {tx_hash}");
     Ok(tx_hash.0)
+}
+
+fn should_retry_code(code: i64) -> bool {
+    code == /* TransactionFailedToResolve */ -301 || code == /* PoolRejectedRBF */ -1111
 }

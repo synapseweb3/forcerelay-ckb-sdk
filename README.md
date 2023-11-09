@@ -29,7 +29,7 @@ Use `cargo +nightly doc --open` to view the full API docs.
 
 ## Configuration
 
-- user_lock_script: module lock script
+- module_lock_script
 - axon_metadata_type_script
 - channel_contract_type_id_args
 - channel_id

@@ -15,7 +15,7 @@ pub use types::*;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     /// Its hash is used as port ID. Address (string) or script.
-    pub user_lock_script: AddressOrScript,
+    pub module_lock_script: AddressOrScript,
 
     /// Axon metadata cell type script.
     pub axon_metadata_type_script: AddressOrScript,
@@ -28,8 +28,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn user_lock_script(&self) -> packed::Script {
-        self.user_lock_script.script()
+    pub fn module_lock_script(&self) -> packed::Script {
+        self.module_lock_script.script()
     }
 
     pub fn axon_metadata_type_script(&self) -> packed::Script {
@@ -49,7 +49,7 @@ impl Config {
     }
 
     pub fn port_id(&self) -> [u8; 32] {
-        self.user_lock_script().calc_script_hash().unpack().0
+        self.module_lock_script().calc_script_hash().unpack().0
     }
 
     pub fn port_id_string(&self) -> String {
@@ -65,7 +65,7 @@ impl Config {
                 .0,
             open: true,
             channel_id: self.channel_id,
-            port_id: self.user_lock_script().calc_script_hash().unpack().0,
+            port_id: self.module_lock_script().calc_script_hash().unpack().0,
         };
         packed::Script::new_builder()
             .hash_type(ScriptHashType::Type.into())
@@ -81,7 +81,7 @@ impl Config {
     pub fn packet_cell_lock_script_prefix(&self) -> packed::Script {
         let packet_args = PacketArgs {
             channel_id: self.channel_id,
-            port_id: self.user_lock_script().calc_script_hash().unpack().0,
+            port_id: self.module_lock_script().calc_script_hash().unpack().0,
             sequence: 0,
         };
 
@@ -96,7 +96,7 @@ impl Config {
     pub fn packet_cell_lock_script(&self, sequence: u16) -> packed::Script {
         let packet_args = PacketArgs {
             channel_id: self.channel_id,
-            port_id: self.user_lock_script().calc_script_hash().unpack().0,
+            port_id: self.module_lock_script().calc_script_hash().unpack().0,
             sequence,
         };
 

@@ -97,7 +97,7 @@ fn test_send_packet() -> Result<()> {
         channel_id,
         confirmations: 1,
         packet_contract_type_id_args: [0u8; 32].into(),
-        user_lock_script: AddressOrScript::Script(sudt_transfer_lock.into()),
+        module_lock_script: AddressOrScript::Script(sudt_transfer_lock.into()),
     };
 
     let current_channel_state = IbcChannel {
@@ -225,7 +225,7 @@ fn test_write_ack_packet() -> Result<()> {
         channel_id,
         confirmations: 1,
         packet_contract_type_id_args: packet_contract_type_id_args.into(),
-        user_lock_script: AddressOrScript::Script(sudt_transfer_lock.into()),
+        module_lock_script: AddressOrScript::Script(sudt_transfer_lock.into()),
     };
 
     let current_channel_state = IbcChannel {
@@ -404,7 +404,7 @@ fn test_consume_ack_packet() -> Result<()> {
             channel_id,
             confirmations: 1,
             packet_contract_type_id_args: packet_contract_type_id_args.into(),
-            user_lock_script: AddressOrScript::Script(sudt_transfer_lock.clone().into()),
+            module_lock_script: AddressOrScript::Script(sudt_transfer_lock.clone().into()),
         };
 
         let packet = IbcPacket {

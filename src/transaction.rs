@@ -1,10 +1,13 @@
 use anyhow::{ensure, Context, Result};
 use ckb_ics_axon::{
-    consts::PACKET_CELL_CAPACITY,
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
-    message::{Envelope, MsgConsumeAckPacket, MsgSendPacket, MsgType, MsgWriteAckPacket},
-    object::Packet,
+    message::{
+        Envelope, MsgChannelCloseInit, MsgConsumeAckPacket, MsgSendPacket, MsgType,
+        MsgWriteAckPacket,
+    },
+    object::{Packet, State},
+    ChannelArgs,
 };
 use ckb_types::{
     core::{Capacity, TransactionBuilder, TransactionView},
@@ -59,6 +62,8 @@ pub fn assemble_send_packet_partial_transaction(
         },
         ack: None,
     };
+    println!("sending packet\n{:?}", packet.packet);
+
     let mut new_channel_state = channel.channel.clone();
     new_channel_state.sequence.next_sequence_sends = new_channel_state
         .sequence
@@ -76,12 +81,7 @@ pub fn assemble_send_packet_partial_transaction(
     let packet_bytes = rlp::encode(&packet).freeze();
     let packet_cell = packed::CellOutput::new_builder()
         .lock(config.packet_cell_lock_script(packet.packet.sequence))
-        .capacity(
-            Capacity::bytes(PACKET_CELL_CAPACITY as usize)
-                .unwrap()
-                .pack(),
-        )
-        .build();
+        .build_exact_capacity(Capacity::bytes(32)?)?;
     let packet_witness = packed::WitnessArgs::new_builder()
         .output_type(Some(packet_bytes.clone()).pack())
         .build();
@@ -148,12 +148,7 @@ pub fn assemble_write_ack_partial_transaction(
     let packet_bytes = rlp::encode(&ack).freeze();
     let packet_cell = packed::CellOutput::new_builder()
         .lock(config.packet_cell_lock_script(ack.packet.sequence))
-        .capacity(
-            Capacity::bytes(PACKET_CELL_CAPACITY as usize)
-                .unwrap()
-                .pack(),
-        )
-        .build();
+        .build_exact_capacity(Capacity::bytes(32)?)?;
     let packet_witness = packed::WitnessArgs::new_builder()
         .input_type(Some(prev_packet_bytes).pack())
         .output_type(Some(packet_bytes.clone()).pack())
@@ -210,6 +205,68 @@ pub fn assemble_consume_ack_packet_partial_transaction(
     let envelope = Envelope {
         msg_type: MsgType::MsgConsumeAckPacket,
         content: rlp::encode(&MsgConsumeAckPacket {}).to_vec(),
+    };
+
+    Ok((tx, envelope))
+}
+
+/// Assemble ChannelCloseInit partial transaction. It'll have channel
+/// input/output/witness and client/channel contract cell dep.
+///
+/// The envelope need to be [added](`add_ibc_envelope`) after other witnesses.
+///
+/// This is a pure function.
+pub fn assemble_channel_close_init_partial_transaction(
+    axon_metadata_cell_dep: packed::CellDep,
+    channel_contract_cell_dep: packed::CellDep,
+    config: &Config,
+    channel: IbcChannelCell,
+) -> Result<(TransactionBuilder, Envelope)> {
+    ensure!(channel.channel.state != State::Closed);
+
+    let mut new_channel = channel.channel.clone();
+    new_channel.state = State::Closed;
+
+    let prev_channel_bytes = rlp::encode(&channel.channel).freeze();
+    let new_channel_bytes = rlp::encode(&new_channel).freeze();
+    let channel_witness = packed::WitnessArgs::new_builder()
+        .input_type(Some(prev_channel_bytes).pack())
+        .output_type(Some(new_channel_bytes.clone()).pack())
+        .build();
+
+    let client_id: [u8; 32] = config
+        .axon_metadata_type_script()
+        .args()
+        .raw_data()
+        .to_vec()
+        .as_slice()
+        .try_into()?;
+    let new_channel_script_args = ChannelArgs {
+        client_id,
+        open: false,
+        channel_id: new_channel.number,
+        port_id: config.port_id(),
+    };
+    let new_channel_script = packed::Script::from(channel.output.lock.clone())
+        .as_builder()
+        .args(new_channel_script_args.to_args().pack())
+        .build();
+    let new_channel_cell = packed::CellOutput::new_builder()
+        .lock(new_channel_script)
+        .build_exact_capacity(Capacity::bytes(32)?)?;
+
+    let tx = TransactionView::new_advanced_builder()
+        .cell_dep(axon_metadata_cell_dep)
+        .cell_dep(channel_contract_cell_dep)
+        // Channel.
+        .input(channel.as_input())
+        .output(new_channel_cell)
+        .output_data(keccak256(&new_channel_bytes)[..].pack())
+        .witness(channel_witness.as_bytes().pack());
+
+    let envelope = Envelope {
+        msg_type: MsgType::MsgChannelCloseInit,
+        content: rlp::encode(&MsgChannelCloseInit {}).to_vec(),
     };
 
     Ok((tx, envelope))

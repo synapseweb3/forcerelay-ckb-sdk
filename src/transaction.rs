@@ -1,4 +1,4 @@
-use anyhow::{ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use ckb_ics_axon::{
     get_channel_id_str,
     handler::{IbcPacket, PacketStatus},
@@ -219,7 +219,6 @@ pub fn assemble_consume_ack_packet_partial_transaction(
 pub fn assemble_channel_close_init_partial_transaction(
     axon_metadata_cell_dep: packed::CellDep,
     channel_contract_cell_dep: packed::CellDep,
-    config: &Config,
     channel: IbcChannelCell,
 ) -> Result<(TransactionBuilder, Envelope)> {
     ensure!(channel.channel.state != State::Closed);
@@ -234,19 +233,14 @@ pub fn assemble_channel_close_init_partial_transaction(
         .output_type(Some(new_channel_bytes.clone()).pack())
         .build();
 
-    let client_id: [u8; 32] = config
-        .axon_metadata_type_script()
-        .args()
-        .raw_data()
-        .to_vec()
-        .as_slice()
-        .try_into()?;
-    let new_channel_script_args = ChannelArgs {
-        client_id,
-        open: false,
-        channel_id: new_channel.number,
-        port_id: config.port_id(),
-    };
+    let old_channel_lock = packed::Script::from(channel.output.lock.clone());
+    let old_channel_script_args = ChannelArgs::from_slice(&old_channel_lock.args().raw_data())
+        .map_err(|_| anyhow!("incompatible channel args"))?;
+    if !old_channel_script_args.open {
+        return Err(anyhow!("channel is already closed"));
+    }
+    let mut new_channel_script_args = old_channel_script_args;
+    new_channel_script_args.open = false;
     let new_channel_script = packed::Script::from(channel.output.lock.clone())
         .as_builder()
         .args(new_channel_script_args.to_args().pack())

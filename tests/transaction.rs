@@ -423,7 +423,6 @@ fn test_channel_close_init() -> Result<()> {
     let (tx, envelope) = assemble_channel_close_init_partial_transaction(
         axon_metadata_cell_dep,
         channel_contract_cell_dep,
-        &config,
         channel_cell,
     )?;
     let tx = tx.input(

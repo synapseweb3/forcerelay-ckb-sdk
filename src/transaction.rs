@@ -62,7 +62,6 @@ pub fn assemble_send_packet_partial_transaction(
         },
         ack: None,
     };
-    println!("sending packet\n{:?}", packet.packet);
 
     let mut new_channel_state = channel.channel.clone();
     new_channel_state.sequence.next_sequence_sends = new_channel_state

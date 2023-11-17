@@ -56,14 +56,14 @@ impl Config {
         convert_byte32_to_hex(&self.port_id())
     }
 
-    pub fn channel_cell_lock_script(&self) -> packed::Script {
+    pub fn channel_cell_lock_script(&self, open: bool) -> packed::Script {
         let channel_args = ChannelArgs {
             client_id: self
                 .axon_metadata_type_script()
                 .calc_script_hash()
                 .unpack()
                 .0,
-            open: true,
+            open,
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,
         };

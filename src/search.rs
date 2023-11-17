@@ -158,7 +158,7 @@ fn parse_packet_tx(
         .as_bytes();
     PacketArgs::from_slice(lock_args).map_err(|_e| anyhow!("parse packet args"))?;
 
-    let channel_lock = config.channel_cell_lock_script().into();
+    let channel_lock = config.channel_cell_lock_script(true).into();
     let channel_cell_idx = tx
         .inner
         .outputs
@@ -270,8 +270,17 @@ pub struct IbcChannelCell {
 
 impl IbcChannelCell {
     pub async fn get_latest(client: &CkbRpcClient, config: &Config) -> Result<Self> {
+        Self::get_latest_with_open(client, config, true).await
+    }
+
+    // <open> means opened or closed channel
+    pub async fn get_latest_with_open(
+        client: &CkbRpcClient,
+        config: &Config,
+        open: bool,
+    ) -> Result<Self> {
         let channel_cell =
-            get_latest_cell_by_lock_script(client, config.channel_cell_lock_script().into())
+            get_latest_cell_by_lock_script(client, config.channel_cell_lock_script(open).into())
                 .await
                 .context("get channel cell")?;
         let tx = client

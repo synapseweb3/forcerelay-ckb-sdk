@@ -136,12 +136,36 @@ async fn main() -> Result<()> {
         Commands::CreateStCell { sudt } => {
             create_st_cell(config, sk, sender_lock_script, sudt).await
         }
-        Commands::ConsumeAck => consume_ack(&config, sk, sender_lock_script).await,
+        Commands::ConsumeAck => consume_ack_retry(&config, sk, sender_lock_script).await,
         Commands::Send {
             sudt,
             receiver,
             amount,
         } => send_retry_and_consume(config, sk, sender_lock_script, sudt, receiver, amount).await,
+    }
+}
+
+async fn consume_ack_retry(
+    config: &Config,
+    sk: secp256k1::SecretKey,
+    sender_lock_script: packed::Script,
+) -> Result<()> {
+    loop {
+        match consume_ack(&config, sk, sender_lock_script.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if let Some(re) = e.downcast_ref::<ckb_sdk::RpcError>() {
+                    match re {
+                        ckb_sdk::RpcError::Rpc(re) if should_retry_code(re.code.code()) => {
+                            println!("Will retry, error: {e:#}");
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                        _ => return Err(e),
+                    }
+                }
+            }
+        }
     }
 }
 

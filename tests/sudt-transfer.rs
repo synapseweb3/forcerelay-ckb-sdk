@@ -108,7 +108,7 @@ fn test_send_packet() -> Result<()> {
     };
     let current_channel_state_bytes = rlp::encode(&current_channel_state).freeze();
     let channel_output = packed::CellOutput::new_builder()
-        .lock(config.channel_cell_lock_script())
+        .lock(config.channel_cell_lock_script(true))
         .build_exact_capacity(Capacity::bytes(32).unwrap())
         .unwrap();
     let channel_out_point = context.create_cell(
@@ -236,7 +236,7 @@ fn test_write_ack_packet() -> Result<()> {
     };
     let current_channel_state_bytes = rlp::encode(&current_channel_state).freeze();
     let channel_output = packed::CellOutput::new_builder()
-        .lock(config.channel_cell_lock_script())
+        .lock(config.channel_cell_lock_script(true))
         .build_exact_capacity(Capacity::bytes(32).unwrap())
         .unwrap();
     let channel_out_point = context.create_cell(

@@ -13,7 +13,7 @@ anyhow = "1.0.72"
 async-stream = "0.3.5"
 bytes = "1.4.0"
 ckb-fixed-hash = "0.111.0"
-ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", rev = "bfd8ab46a1f1fc" }
+ckb-ics-axon = { git = "https://github.com/synapseweb3/ckb-ics.git", rev = "0299a91" }
 ckb-jsonrpc-types = "0.111.0"
 ckb-sdk = "3.0.0"
 ckb-types = "0.111.0"

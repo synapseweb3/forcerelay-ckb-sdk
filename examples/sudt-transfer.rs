@@ -151,7 +151,7 @@ async fn consume_ack_retry(
     sender_lock_script: packed::Script,
 ) -> Result<()> {
     loop {
-        match consume_ack(&config, sk, sender_lock_script.clone()).await {
+        match consume_ack(config, sk, sender_lock_script.clone()).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 if let Some(re) = e.downcast_ref::<ckb_sdk::RpcError>() {

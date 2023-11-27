@@ -58,6 +58,7 @@ fn test_send_packet() -> Result<()> {
 
     let config = Config {
         axon_metadata_type_script: AddressOrScript::Script(axon_metadata_type_script.into()),
+        axon_ibc_handler_address: Default::default(),
         channel_contract_type_id_args: channel_contract_type_id_args.into(),
         channel_id,
         confirmations: 1,
@@ -164,6 +165,7 @@ fn test_write_ack_packet() -> Result<()> {
 
     let config = Config {
         axon_metadata_type_script: AddressOrScript::Script(axon_metadata_type_script.into()),
+        axon_ibc_handler_address: Default::default(),
         channel_contract_type_id_args: channel_contract_type_id_args.into(),
         channel_id,
         confirmations: 1,
@@ -282,6 +284,7 @@ fn test_consume_ack_packet() -> Result<()> {
     let config = Config {
         // Invalid.
         axon_metadata_type_script: AddressOrScript::Script(always_success_lock.clone().into()),
+        axon_ibc_handler_address: Default::default(),
         // Invalid.
         channel_contract_type_id_args: [0; 32].into(),
         channel_id,
@@ -393,6 +396,7 @@ fn test_channel_close_init() -> Result<()> {
     let config = Config {
         axon_metadata_type_script: AddressOrScript::Script(axon_metadata_type_script.into()),
         channel_contract_type_id_args: channel_contract_type_id_args.into(),
+        axon_ibc_handler_address: Default::default(),
         channel_id,
         confirmations: 1,
         packet_contract_type_id_args: packet_contract_type_id_args.into(),

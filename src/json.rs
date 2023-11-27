@@ -81,6 +81,7 @@ pub struct JsonIbcChannel {
     #[serde(with = "JsonChannelCounterparty")]
     pub counterparty: ChannelCounterparty,
     pub connection_hops: Vec<String>,
+    pub version: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -116,6 +117,7 @@ pub struct JsonSequence {
 pub struct JsonChannelCounterparty {
     pub port_id: String,
     pub channel_id: String,
+    pub connection_id: String,
 }
 
 #[allow(clippy::enum_variant_names)]

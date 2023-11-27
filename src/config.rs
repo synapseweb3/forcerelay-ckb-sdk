@@ -1,7 +1,7 @@
 mod types;
 
-use ckb_fixed_hash::H256;
-use ckb_ics_axon::{convert_byte32_to_hex, ChannelArgs, PacketArgs};
+use ckb_fixed_hash::{H160, H256};
+use ckb_ics_axon::{ChannelArgs, PacketArgs};
 use ckb_sdk::constants::TYPE_ID_CODE_HASH;
 use ckb_types::{
     core::ScriptHashType,
@@ -19,6 +19,8 @@ pub struct Config {
 
     /// Axon metadata cell type script.
     pub axon_metadata_type_script: AddressOrScript,
+    pub axon_ibc_handler_address: H160,
+
     pub channel_contract_type_id_args: H256,
     pub channel_id: u16,
 
@@ -53,16 +55,17 @@ impl Config {
     }
 
     pub fn port_id_string(&self) -> String {
-        convert_byte32_to_hex(&self.port_id())
+        hex::encode(self.port_id())
     }
 
     pub fn channel_cell_lock_script(&self, open: bool) -> packed::Script {
         let channel_args = ChannelArgs {
-            client_id: self
+            metadata_type_id: self
                 .axon_metadata_type_script()
                 .calc_script_hash()
                 .unpack()
                 .0,
+            ibc_handler_address: self.axon_ibc_handler_address.0,
             open,
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,

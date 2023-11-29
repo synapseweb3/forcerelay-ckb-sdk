@@ -157,7 +157,7 @@ dependencies = [
 [[package]]
 name = "axon-tools"
 version = "0.1.1"
-source = "git+https://github.com/axonweb3/axon.git?rev=06340ba4#06340ba42a752f9f31d38dab2dd40fa50ab2e239"
+source = "git+https://github.com/axonweb3/axon.git?rev=f889d38#f889d38949d6201c448ac72ebaec4d4fb0e5ba51"
 dependencies = [
  "bit-vec",
  "blst",
@@ -532,7 +532,7 @@ dependencies = [
 [[package]]
 name = "ckb-ics-axon"
 version = "0.1.0"
-source = "git+https://github.com/synapseweb3/ckb-ics.git?rev=b026840b9599ba#b026840b9599ba277465efa2d3d4e2b33292b2e1"
+source = "git+https://github.com/synapseweb3/ckb-ics.git?rev=8c4b958#8c4b958ac7d89d247390a791d6807567a59416ea"
 dependencies = [
  "axon-tools",
  "axon-types",

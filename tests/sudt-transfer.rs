@@ -1,5 +1,4 @@
 use anyhow::Result;
-use axon_types::metadata::Metadata;
 use bytes::Bytes;
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket, PacketStatus},
@@ -78,7 +77,7 @@ fn test_send_packet() -> Result<()> {
     }
     .encode_to_vec();
 
-    let axon_metadata_data = Metadata::new_builder().build().as_bytes();
+    let axon_metadata_data = Bytes::from_static(b"metadata");
     let axon_metadata_cell = context.deploy_cell(axon_metadata_data);
     let axon_metadata_type_script = get_type_script(&context, &axon_metadata_cell);
     let axon_metadata_cell_dep = simple_dep(axon_metadata_cell);
@@ -174,7 +173,7 @@ fn test_write_ack_packet() -> Result<()> {
         Bytes::new(),
     );
 
-    let axon_metadata_data = Metadata::new_builder().build().as_bytes();
+    let axon_metadata_data = Bytes::from_static(b"metadata");
     let axon_metadata_cell = context.deploy_cell(axon_metadata_data);
     let axon_metadata_type_script = context
         .get_cell(&axon_metadata_cell)
@@ -275,7 +274,6 @@ fn test_write_ack_packet() -> Result<()> {
             source_port_id,
             ..Default::default()
         },
-        tx_hash: None,
         status: PacketStatus::Recv,
         ack: None,
     };
@@ -299,6 +297,8 @@ fn test_write_ack_packet() -> Result<()> {
             msg_type: MsgType::MsgRecvPacket,
             // Invalid mock envelope content.
             content: vec![],
+            // Mock empty commitments.
+            commitments: vec![],
         },
         packet,
     };
@@ -415,7 +415,6 @@ fn test_consume_ack_packet() -> Result<()> {
                 data,
                 ..Default::default()
             },
-            tx_hash: None,
             status: PacketStatus::Ack,
             ack: Some(vec![if success { 1 } else { 0 }]),
         };
@@ -444,6 +443,8 @@ fn test_consume_ack_packet() -> Result<()> {
                 msg_type: MsgType::MsgAckPacket,
                 // Invalid mock envelope content.
                 content: vec![],
+                // Mock empty commitments.
+                commitments: vec![],
             },
             packet,
         };

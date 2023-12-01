@@ -1,7 +1,7 @@
 use ckb_fixed_hash::H256;
 use ckb_ics_axon::{
     handler::{IbcChannel, IbcPacket, PacketStatus, Sequence},
-    message::{Envelope, MsgType},
+    message::{CommitmentKV, Envelope, MsgType},
     object::{ChannelCounterparty, Ordering, Packet, State},
 };
 use ckb_jsonrpc_types::JsonBytes;
@@ -16,7 +16,6 @@ pub struct JsonIbcPacket {
     pub packet: Packet,
     #[serde(with = "JsonPacketStatus")]
     pub status: PacketStatus,
-    pub tx_hash: Option<H256>,
     #[serde_as(as = "Option<HexBytes>")]
     pub ack: Option<Vec<u8>>,
 }
@@ -35,7 +34,6 @@ impl From<&IbcPacket> for JsonIbcPacket {
         Self {
             packet: value.packet.clone(),
             status: value.status,
-            tx_hash: value.tx_hash.map(|v| <[u8; 32]>::from(v).into()),
             ack: value.ack.clone(),
         }
     }
@@ -46,7 +44,6 @@ impl From<JsonIbcPacket> for IbcPacket {
         Self {
             packet: value.packet,
             status: value.status,
-            tx_hash: value.tx_hash.map(|v| <[u8; 32]>::from(v).into()),
             ack: value.ack,
         }
     }
@@ -56,7 +53,7 @@ impl From<JsonIbcPacket> for IbcPacket {
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Packet", deny_unknown_fields)]
 pub struct JsonPacket {
-    pub sequence: u16,
+    pub sequence: u64,
     pub source_port_id: String,
     pub source_channel_id: String,
     pub destination_port_id: String,
@@ -70,7 +67,7 @@ pub struct JsonPacket {
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "IbcChannel", deny_unknown_fields)]
 pub struct JsonIbcChannel {
-    pub number: u16,
+    pub number: u64,
     pub port_id: String,
     #[serde(with = "JsonState")]
     pub state: State,
@@ -92,7 +89,6 @@ enum JsonState {
     OpenTry,
     Open,
     Closed,
-    Frozen,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -106,10 +102,10 @@ enum JsonOrdering {
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Sequence", deny_unknown_fields)]
 pub struct JsonSequence {
-    pub next_sequence_sends: u16,
-    pub next_sequence_recvs: u16,
-    pub next_sequence_acks: u16,
-    pub received_sequences: Vec<u16>,
+    pub next_sequence_sends: u64,
+    pub next_sequence_recvs: u64,
+    pub next_sequence_acks: u64,
+    pub received_sequences: Vec<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -146,13 +142,14 @@ enum JsonMsgType {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct JsonEnvelope {
     #[serde(with = "JsonMsgType")]
     pub msg_type: MsgType,
     #[serde_as(as = "HexBytes")]
     pub content: Vec<u8>,
+    pub commitments: Vec<(H256, H256)>,
 }
 
 impl From<&Envelope> for JsonEnvelope {
@@ -160,6 +157,11 @@ impl From<&Envelope> for JsonEnvelope {
         Self {
             content: value.content.clone(),
             msg_type: value.msg_type,
+            commitments: value
+                .commitments
+                .iter()
+                .map(|kv| (kv.0 .0.into(), kv.1 .0.into()))
+                .collect(),
         }
     }
 }
@@ -169,6 +171,11 @@ impl From<JsonEnvelope> for Envelope {
         Self {
             msg_type: value.msg_type,
             content: value.content,
+            commitments: value
+                .commitments
+                .into_iter()
+                .map(|(k, v)| CommitmentKV(k.0.into(), v.0.into()))
+                .collect(),
         }
     }
 }

@@ -1,7 +1,9 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use ckb_ics_axon::{
-    get_channel_id_str,
-    handler::{IbcPacket, PacketStatus},
+    handler::{
+        handle_msg_channel_close_init, handle_msg_send_packet, handle_msg_write_ack_packet,
+        IbcPacket, PacketStatus,
+    },
     message::{
         Envelope, MsgChannelCloseInit, MsgConsumeAckPacket, MsgSendPacket, MsgType,
         MsgWriteAckPacket,
@@ -47,15 +49,15 @@ pub fn assemble_send_packet_partial_transaction(
     timeout_height: u64,
     timeout_timestamp: u64,
 ) -> Result<(TransactionBuilder, Envelope)> {
+    let args = config.channel_args(true);
     let packet = IbcPacket {
-        tx_hash: None,
         status: PacketStatus::Send,
         packet: Packet {
             data,
             timeout_height,
             timeout_timestamp,
             sequence: channel.channel.sequence.next_sequence_sends,
-            source_channel_id: get_channel_id_str(channel.channel.number),
+            source_channel_id: args.channel_id_str(),
             source_port_id: channel.channel.port_id.clone(),
             destination_port_id: channel.channel.counterparty.port_id.clone(),
             destination_channel_id: channel.channel.counterparty.channel_id.clone(),
@@ -69,6 +71,19 @@ pub fn assemble_send_packet_partial_transaction(
         .next_sequence_sends
         .checked_add(1)
         .context("sequence overflow")?;
+
+    let packet_args = config.packet_args(packet.packet.sequence);
+    let mut commitments = Vec::new();
+    handle_msg_send_packet(
+        channel.channel.clone(),
+        args,
+        new_channel_state.clone(),
+        args,
+        packet.clone(),
+        packet_args,
+        &mut commitments,
+    )
+    .map_err(|e| anyhow!("handle_msg_send_packet: {e:?}"))?;
 
     let prev_channel_bytes = rlp::encode(&channel.channel).freeze();
     let new_channel_bytes = rlp::encode(&new_channel_state).freeze();
@@ -101,6 +116,7 @@ pub fn assemble_send_packet_partial_transaction(
 
     let envelope = Envelope {
         msg_type: MsgType::MsgSendPacket,
+        commitments,
         content: rlp::encode(&MsgSendPacket {}).to_vec(),
     };
 
@@ -130,7 +146,6 @@ pub fn assemble_write_ack_partial_transaction(
     let ack = IbcPacket {
         packet: packet.packet.packet.clone(),
         status: PacketStatus::WriteAck,
-        tx_hash: None,
         ack: Some(ack),
     };
 
@@ -153,6 +168,22 @@ pub fn assemble_write_ack_partial_transaction(
         .output_type(Some(packet_bytes.clone()).pack())
         .build();
 
+    let mut commitments = Vec::new();
+    let channel_args = config.channel_args(true);
+    let packet_args = config.packet_args(packet.packet.packet.sequence);
+    handle_msg_write_ack_packet(
+        channel.channel.clone(),
+        channel_args,
+        new_channel_state,
+        channel_args,
+        packet.packet.clone(),
+        packet_args,
+        ack,
+        packet_args,
+        &mut commitments,
+    )
+    .map_err(|e| anyhow!("handle_msg_write_ack_packet: {e:?}"))?;
+
     let tx = TransactionView::new_advanced_builder()
         .cell_dep(axon_metadata_cell_dep)
         .cell_dep(channel_contract_cell_dep)
@@ -171,6 +202,7 @@ pub fn assemble_write_ack_partial_transaction(
 
     let envelope = Envelope {
         msg_type: MsgType::MsgWriteAckPacket,
+        commitments,
         content: rlp::encode(&MsgWriteAckPacket {}).to_vec(),
     };
 
@@ -203,6 +235,7 @@ pub fn assemble_consume_ack_packet_partial_transaction(
 
     let envelope = Envelope {
         msg_type: MsgType::MsgConsumeAckPacket,
+        commitments: vec![],
         content: rlp::encode(&MsgConsumeAckPacket {}).to_vec(),
     };
 
@@ -248,6 +281,16 @@ pub fn assemble_channel_close_init_partial_transaction(
         .lock(new_channel_script)
         .build_exact_capacity(Capacity::bytes(32)?)?;
 
+    let mut commitments = Vec::new();
+    handle_msg_channel_close_init(
+        channel.channel.clone(),
+        old_channel_script_args,
+        new_channel,
+        new_channel_script_args,
+        &mut commitments,
+    )
+    .map_err(|e| anyhow!("handle_msg_channel_close_init: {e:?}"))?;
+
     let tx = TransactionView::new_advanced_builder()
         .cell_dep(axon_metadata_cell_dep)
         .cell_dep(channel_contract_cell_dep)
@@ -259,6 +302,7 @@ pub fn assemble_channel_close_init_partial_transaction(
 
     let envelope = Envelope {
         msg_type: MsgType::MsgChannelCloseInit,
+        commitments,
         content: rlp::encode(&MsgChannelCloseInit {}).to_vec(),
     };
 

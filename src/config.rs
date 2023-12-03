@@ -22,7 +22,7 @@ pub struct Config {
     pub axon_ibc_handler_address: H160,
 
     pub channel_contract_type_id_args: H256,
-    pub channel_id: u16,
+    pub channel_id: u64,
 
     pub packet_contract_type_id_args: H256,
 
@@ -58,8 +58,8 @@ impl Config {
         hex::encode(self.port_id())
     }
 
-    pub fn channel_cell_lock_script(&self, open: bool) -> packed::Script {
-        let channel_args = ChannelArgs {
+    pub fn channel_args(&self, open: bool) -> ChannelArgs {
+        ChannelArgs {
             metadata_type_id: self
                 .axon_metadata_type_script()
                 .calc_script_hash()
@@ -69,12 +69,23 @@ impl Config {
             open,
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,
-        };
+        }
+    }
+
+    pub fn channel_cell_lock_script(&self, open: bool) -> packed::Script {
         packed::Script::new_builder()
             .hash_type(ScriptHashType::Type.into())
             .code_hash(self.channel_contract_type_script().calc_script_hash())
-            .args(channel_args.to_args().pack())
+            .args(self.channel_args(open).to_args().pack())
             .build()
+    }
+
+    pub fn packet_args(&self, sequence: u64) -> PacketArgs {
+        PacketArgs {
+            channel_id: self.channel_id,
+            port_id: self.module_lock_script().calc_script_hash().unpack().0,
+            sequence,
+        }
     }
 
     pub fn packet_contract_type_script(&self) -> packed::Script {
@@ -96,7 +107,7 @@ impl Config {
     }
 
     /// Packet cell lock script for certain sequence number.
-    pub fn packet_cell_lock_script(&self, sequence: u16) -> packed::Script {
+    pub fn packet_cell_lock_script(&self, sequence: u64) -> packed::Script {
         let packet_args = PacketArgs {
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,

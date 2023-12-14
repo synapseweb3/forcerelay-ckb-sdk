@@ -82,6 +82,7 @@ impl Config {
 
     pub fn packet_args(&self, sequence: u64) -> PacketArgs {
         PacketArgs {
+            ibc_handler_address: self.axon_ibc_handler_address.clone().into(),
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,
             sequence,
@@ -94,6 +95,7 @@ impl Config {
 
     pub fn packet_cell_lock_script_prefix(&self) -> packed::Script {
         let packet_args = PacketArgs {
+            ibc_handler_address: self.axon_ibc_handler_address.clone().into(),
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,
             sequence: 0,
@@ -109,6 +111,7 @@ impl Config {
     /// Packet cell lock script for certain sequence number.
     pub fn packet_cell_lock_script(&self, sequence: u64) -> packed::Script {
         let packet_args = PacketArgs {
+            ibc_handler_address: self.axon_ibc_handler_address.clone().into(),
             channel_id: self.channel_id,
             port_id: self.module_lock_script().calc_script_hash().unpack().0,
             sequence,
